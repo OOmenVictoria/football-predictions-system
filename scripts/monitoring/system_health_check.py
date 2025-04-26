@@ -27,7 +27,7 @@ def initialize_firebase():
                     f.write(firebase_credentials)
                 cred = credentials.Certificate('firebase-credentials.json')
             else:
-                cred = None
+                raise Exception("FIREBASE_CREDENTIALS not found in environment variables")
         else:
             cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
             cred = credentials.Certificate(cred_path)
