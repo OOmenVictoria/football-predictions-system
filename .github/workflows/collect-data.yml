@@ -1,0 +1,42 @@
+name: Collect Match Data
+
+on:
+  schedule:
+    - cron: '0 */8 * * *'  # Ogni 8 ore
+  workflow_dispatch:  # Permette esecuzione manuale
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 firebase-admin python-dotenv
+          
+      - name: Fetch matches
+        run: python scripts/data_collection/fetch_matches.py
+        env:
+          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          
+      - name: Fetch statistics
+        run: python scripts/data_collection/fetch_statistics.py
+        env:
+          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          
+      - name: Update health status
+        run: |
+          echo "Updating health status..."
+          python scripts/monitoring/update_health.py --component=data_collection
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}

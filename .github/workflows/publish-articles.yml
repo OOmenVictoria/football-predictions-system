@@ -1,0 +1,46 @@
+name: Publish Articles
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # Ogni 2 ore (più frequente per gestire articoli pronti)
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests firebase-admin python-dotenv
+          
+      - name: Publish to WordPress
+        run: python scripts/publishing/publish_to_wordpress.py
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          
+      - name: Cleanup expired articles
+        run: python scripts/publishing/cleanup_expired.py
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          
+      - name: Update health status
+        run: |
+          echo "Updating health status..."
+          python scripts/monitoring/update_health.py --component=publishing
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
