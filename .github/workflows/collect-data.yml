@@ -30,7 +30,7 @@ jobs:
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           
       - name: Fetch statistics (test)
-        run: python -u scripts/data_collection/fetch_stats_test.py|
+        run: python -u scripts/data_collection/fetch_stats_test.py
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
