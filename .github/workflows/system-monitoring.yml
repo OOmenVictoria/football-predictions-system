@@ -25,10 +25,12 @@ jobs:
       - name: Run system health check
         run: python scripts/monitoring/system_health_check.py
         env:
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           NOTIFICATION_WEBHOOK: ${{ secrets.NOTIFICATION_WEBHOOK }}
           
       - name: Database backup
         run: python scripts/monitoring/backup_database.py
         env:
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
