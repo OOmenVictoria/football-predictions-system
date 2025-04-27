@@ -1,40 +1,44 @@
 #!/usr/bin/env python3
 """
-Generate Articles - Creates prediction articles for upcoming matches
-Uses collected data to generate detailed analysis and forecasts in English
+Script per la generazione automatica di articoli di pronostico calcistico.
+Legge i dati delle partite da Firebase e genera articoli in inglese.
 """
 import os
 import sys
 import json
 import logging
-import random
-import math
 from datetime import datetime, timedelta
+import random
 import firebase_admin
 from firebase_admin import credentials, db
-from dotenv import load_dotenv
 
-# Logging configuration
-log_dir = os.path.expanduser('~/football-predictions/logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, f"generate_articles_{datetime.now().strftime('%Y%m%d')}.log")
-
+# Configurazione logging
 logging.basicConfig(
-    filename=log_file,
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
 )
-
-# Global variables
-load_dotenv()
+logger = logging.getLogger("article_generator")
 
 def initialize_firebase():
-    """Initialize Firebase connection"""
+    """Inizializza connessione Firebase"""
     try:
         firebase_admin.get_app()
     except ValueError:
-        cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
-        cred = credentials.Certificate(cred_path)
+        # GitHub Actions o ambiente CI
+        if os.environ.get('GITHUB_ACTIONS') or os.environ.get('CI'):
+            firebase_credentials = os.environ.get('FIREBASE_CREDENTIALS')
+            if firebase_credentials:
+                with open('firebase-credentials.json', 'w') as f:
+                    f.write(firebase_credentials)
+                cred = credentials.Certificate('firebase-credentials.json')
+            else:
+                raise Exception("FIREBASE_CREDENTIALS not found")
+        else:
+            # Uso locale
+            cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
+            cred = credentials.Certificate(cred_path)
+        
         firebase_admin.initialize_app(cred, {
             'databaseURL': os.getenv('FIREBASE_DB_URL')
         })
@@ -52,13 +56,17 @@ def get_matches_to_generate():
     today = datetime.now().date()
     now = datetime.now()
     
+    logger.info(f"Cercando partite per i prossimi 3 giorni a partire da {today}")
+    
     for i in range(3):
         date_str = (today + timedelta(days=i)).strftime('%Y-%m-%d')
+        logger.info(f"Cercando partite per {date_str}")
         daily_matches = matches_ref.child(date_str).get() or {}
         
         for match_id, match_data in daily_matches.items():
             # Skip if article already generated
             if articles_ref.child(match_id).get():
+                logger.info(f"Articolo già esistente per la partita {match_id}, skip")
                 continue
             
             # Check publishing window (8-6 hours before)
@@ -66,14 +74,19 @@ def get_matches_to_generate():
             publish_window_start = match_time - timedelta(hours=int(os.getenv('PUBLISH_WINDOW_START', 8)))
             publish_window_end = match_time - timedelta(hours=int(os.getenv('PUBLISH_WINDOW_END', 6)))
             
+            # Set publish and expire times
+            match_data['publish_time'] = publish_window_start.isoformat()
+            match_data['expire_time'] = (match_time + timedelta(hours=12)).isoformat()
+            
             # If we're in the publishing window or approaching it (1 hour advance)
             if now >= (publish_window_start - timedelta(hours=1)) and now <= publish_window_end:
+                logger.info(f"Partita trovata nel publishing window: {match_data['home_team']} vs {match_data['away_team']}")
                 matches_to_process.append(match_data)
     
     # Sort by date (closest first)
     matches_to_process.sort(key=lambda x: x['utc_date'])
     
-    logging.info(f"Found {len(matches_to_process)} matches to process for articles")
+    logger.info(f"Trovate {len(matches_to_process)} partite da elaborare per gli articoli")
     return matches_to_process
 
 def get_team_stats(team_id):
@@ -85,6 +98,8 @@ def get_team_stats(team_id):
     if not stats:
         team_ref = db.reference(f'teams/{team_id}')
         team_data = team_ref.get() or {'name': 'Unknown Team'}
+        
+        logger.info(f"Nessuna statistica trovata per {team_id}, generando dati simulati")
         
         # Simulated data
         stats = {
@@ -126,6 +141,7 @@ def get_h2h_data(match_id):
     
     # If no data, return an empty object
     if not h2h_data:
+        logger.info(f"Nessun dato testa a testa trovato per la partita {match_id}")
         return {
             'total_matches': 0,
             'home_wins': 0,
@@ -477,6 +493,8 @@ def create_article(match_data):
     away_team_id = match_data['away_team_id']
     match_id = match_data['id']
     
+    logger.info(f"Creazione articolo per {match_data['home_team']} vs {match_data['away_team']}")
+    
     # Get team statistics
     home_stats = get_team_stats(home_team_id)
     away_stats = get_team_stats(away_team_id)
@@ -572,10 +590,29 @@ def save_article(article):
     
     return True
 
+def update_component_status(status='success', message=''):
+    """Update component status in health monitoring"""
+    try:
+        ref = db.reference('health/content_generation')
+        update_data = {
+            'last_run': datetime.now().isoformat(),
+            'status': status
+        }
+        
+        if message:
+            update_data['message'] = message
+            
+        ref.update(update_data)
+        logger.info(f"Stato componente aggiornato: {status}")
+        return True
+    except Exception as e:
+        logger.error(f"Errore nell'aggiornamento dello stato: {str(e)}")
+        return False
+
 def main():
     """Main function"""
     start_time = datetime.now()
-    logging.info(f"Starting Article Generator - {start_time.isoformat()}")
+    logger.info(f"Article Generator avviato - {start_time.isoformat()}")
     
     try:
         # 1. Initialize Firebase
@@ -590,43 +627,31 @@ def main():
         # 4. Generate and save articles
         generated_count = 0
         for match in matches_to_process:
-            logging.info(f"Generating article for: {match['home_team']} vs {match['away_team']}")
+            logger.info(f"Generazione articolo per: {match['home_team']} vs {match['away_team']}")
             
             # Create and save article
             article = create_article(match)
             save_article(article)
             
             generated_count += 1
-            logging.info(f"Article generated for match ID {match['id']}")
+            logger.info(f"Articolo generato per match ID {match['id']}")
         
         # 5. Update health status
-        health_ref = db.reference('health/generate_articles')
-        health_ref.set({
-            'last_run': datetime.now().isoformat(),
-            'articles_generated': generated_count,
-            'pending_matches': len(matches) - generated_count,
-            'status': 'success'
-        })
+        if generated_count > 0:
+            update_component_status('success', f"Generati {generated_count} articoli")
+        else:
+            update_component_status('warning', "Nessun articolo generato")
         
     except Exception as e:
-        logging.error(f"General error: {str(e)}")
+        logger.error(f"Errore generale: {str(e)}")
         
         # Update health status with error
-        try:
-            health_ref = db.reference('health/generate_articles')
-            health_ref.set({
-                'last_run': datetime.now().isoformat(),
-                'status': 'error',
-                'error_message': str(e)
-            })
-        except:
-            pass
-            
+        update_component_status('error', str(e))
         return 1
     
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
-    logging.info(f"Article Generator completed in {duration} seconds")
+    logger.info(f"Article Generator completato in {duration} secondi")
     return 0
 
 if __name__ == "__main__":
