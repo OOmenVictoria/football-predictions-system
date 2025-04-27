@@ -1,4 +1,4 @@
-name: Publish Articles
+name: Translate Content
 
 on:
   schedule:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:  # Permette esecuzione manuale
 
 jobs:
-  publish:
+  translate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -22,19 +22,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests firebase-admin python-dotenv
           
-      - name: Publish articles (test)
-        run: python -u scripts/publishing/publisher_test.py
+      - name: Translate articles (test)
+        run: python -u scripts/translation/translator_test.py
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
-          WP_USER: ${{ secrets.WP_USER }}
-          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-          WP_API_URL: ${{ secrets.WP_API_URL }}
           
       - name: Update health status
         run: |
           echo "Updating health status..."
-          python -u scripts/monitoring/update_health.py --component=publishing || echo "Failed to update health status"
+          python -u scripts/monitoring/update_health.py --component=translation || echo "Failed to update health status"
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
