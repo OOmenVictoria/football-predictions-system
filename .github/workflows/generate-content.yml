@@ -2,8 +2,8 @@ name: Generate Content
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Ogni 6 ore
-  workflow_dispatch:
+    - cron: '0 */12 * * *'  # Ogni 12 ore
+  workflow_dispatch:  # Permette esecuzione manuale
 
 jobs:
   generate:
@@ -22,22 +22,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests firebase-admin python-dotenv
           
-      - name: Generate articles
-        run: python scripts/content_generation/article_generator.py
+      - name: Generate articles (test)
+        run: python -u scripts/content_generation/article_generator_test.py
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
-          PUBLISH_WINDOW_START: 8
-          PUBLISH_WINDOW_END: 6
-          
-      - name: Translate articles
-        run: python scripts/translation/translator.py
-        env:
-          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
-          LANGUAGES: "en,it,es,fr,de,pt,ar,ru,ja,pl,zh,tr,nl,sv,el"
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           
       - name: Update health status
         run: |
           echo "Updating health status..."
-          python scripts/monitoring/update_health.py --component=content_generation
+          python -u scripts/monitoring/update_health.py --component=content_generation || echo "Failed to update health status"
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
