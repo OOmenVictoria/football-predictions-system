@@ -29,9 +29,8 @@ jobs:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           
-      - name: Fetch statistics
-        run: |
-          python -u scripts/data_collection/fetch_team_stats.py || { echo "Script failed with error $?"; exit 1; }
+      - name: Fetch statistics (test)
+        run: python -u scripts/data_collection/fetch_stats_test.py|
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
