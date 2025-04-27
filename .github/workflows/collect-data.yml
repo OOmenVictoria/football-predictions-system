@@ -23,16 +23,20 @@ jobs:
           pip install requests beautifulsoup4 firebase-admin python-dotenv
           
       - name: Fetch matches
-        run: python scripts/data_collection/fetch_matches.py
+        run: |
+          python -u scripts/data_collection/fetch_matches.py || { echo "Script failed with error $?"; exit 1; }
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           
       - name: Fetch statistics
-        run: python scripts/data_collection/fetch_statistics.py
+        run: |
+          python -u scripts/data_collection/fetch_team_stats.py || { echo "Script failed with error $?"; exit 1; }
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           
       - name: Update health status
         run: |
@@ -40,3 +44,4 @@ jobs:
           python scripts/monitoring/update_health.py --component=data_collection
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
