@@ -1,10 +1,8 @@
 name: Generate Content
-
 on:
   schedule:
     - cron: '0 */12 * * *'  # Ogni 12 ore
   workflow_dispatch:  # Permette esecuzione manuale
-
 jobs:
   generate:
     runs-on: ubuntu-latest
@@ -22,8 +20,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests firebase-admin python-dotenv
           
-      - name: Generate articles (test)
-        run: python -u scripts/content_generation/article_generator_test.py
+      - name: Generate articles
+        run: python -u scripts/content_generation/article_generator.py
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}

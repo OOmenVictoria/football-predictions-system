@@ -1,10 +1,8 @@
 name: Collect Match Data
-
 on:
   schedule:
     - cron: '0 */8 * * *'  # Ogni 8 ore
   workflow_dispatch:  # Permette esecuzione manuale
-
 jobs:
   collect:
     runs-on: ubuntu-latest
@@ -22,15 +20,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 firebase-admin python-dotenv
           
-      - name: Fetch matches (test)
-        run: python -u scripts/data_collection/fetch_matches_test.py
+      - name: Fetch matches
+        run: python -u scripts/data_collection/fetch_matches.py
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           
-      - name: Fetch statistics (test)
-        run: python -u scripts/data_collection/fetch_stats_test.py
+      - name: Fetch team statistics
+        run: python -u scripts/data_collection/fetch_team_stats.py
+        env:
+          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
+          
+      - name: Fetch head-to-head statistics
+        run: python -u scripts/data_collection/fetch_h2h_stats.py
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
