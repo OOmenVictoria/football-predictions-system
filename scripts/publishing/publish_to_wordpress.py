@@ -13,33 +13,53 @@ import requests
 from datetime import datetime, timedelta
 import firebase_admin
 from firebase_admin import credentials, db
-from dotenv import load_dotenv
 
-# Logging configuration
-log_dir = os.path.expanduser('~/football-predictions/logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, f"publish_wordpress_{datetime.now().strftime('%Y%m%d')}.log")
-
+# Configure logging
 logging.basicConfig(
-    filename=log_file,
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
 )
+logger = logging.getLogger("wordpress_publisher")
 
-# Global variables
-load_dotenv()
-WP_URL = os.getenv('WP_URL')
-WP_USER = os.getenv('WP_USER')
-WP_APP_PASSWORD = os.getenv('WP_APP_PASSWORD')
-LANGUAGES = os.getenv('LANGUAGES', 'en,it,es,fr,de,pt,ar,ru,ja,pl,zh,tr,nl,sv,el').split(',')
+# Languages to publish
+LANGUAGES = [
+    'en',  # English
+    'es',  # Spanish
+    'it',  # Italian
+    'de',  # German
+    'fr',  # French
+    'pt',  # Portuguese
+    'nl',  # Dutch
+    'pl',  # Polish
+    'sv',  # Swedish
+    'ja',  # Japanese
+    'zh',  # Chinese
+    'no',  # Norwegian
+    'tr',  # Turkish
+    'ar',  # Arabic
+    'ru',  # Russian
+]
 
 def initialize_firebase():
     """Initialize Firebase connection"""
     try:
         firebase_admin.get_app()
     except ValueError:
-        cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
-        cred = credentials.Certificate(cred_path)
+        # GitHub Actions or CI environment
+        if os.environ.get('GITHUB_ACTIONS') or os.environ.get('CI'):
+            firebase_credentials = os.environ.get('FIREBASE_CREDENTIALS')
+            if firebase_credentials:
+                with open('firebase-credentials.json', 'w') as f:
+                    f.write(firebase_credentials)
+                cred = credentials.Certificate('firebase-credentials.json')
+            else:
+                raise Exception("FIREBASE_CREDENTIALS not found")
+        else:
+            # Local use
+            cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
+            cred = credentials.Certificate(cred_path)
+        
         firebase_admin.initialize_app(cred, {
             'databaseURL': os.getenv('FIREBASE_DB_URL')
         })
@@ -47,94 +67,161 @@ def initialize_firebase():
 
 def get_wp_auth_header():
     """Generate WordPress authentication header"""
-    if not WP_USER or not WP_APP_PASSWORD:
-        logging.error("Missing WordPress credentials")
+    wp_user = os.getenv('WP_USER')
+    wp_password = os.getenv('WP_APP_PASSWORD')
+    
+    if not wp_user or not wp_password:
+        logger.error("Missing WordPress credentials")
         return None
     
-    auth_string = f"{WP_USER}:{WP_APP_PASSWORD}"
+    auth_string = f"{wp_user}:{wp_password}"
     auth_base64 = base64.b64encode(auth_string.encode()).decode()
     return {'Authorization': f"Basic {auth_base64}"}
 
+def get_wp_url():
+    """Get WordPress API URL"""
+    wp_url = os.getenv('WP_URL')
+    
+    if not wp_url:
+        logger.error("Missing WordPress URL")
+        return None
+    
+    # Make sure URL ends with /wp-json/wp/v2
+    if not wp_url.endswith('/wp-json/wp/v2'):
+        if wp_url.endswith('/'):
+            wp_url = wp_url + 'wp-json/wp/v2'
+        else:
+            wp_url = wp_url + '/wp-json/wp/v2'
+    
+    return wp_url
+
 def get_articles_to_publish():
     """Get articles ready for publication"""
-    articles_to_publish = []
+    logger.info("Getting articles to publish...")
     
-    # Articles reference
-    articles_ref = db.reference('articles')
-    articles = articles_ref.get() or {}
-    
-    now = datetime.now()
-    
-    for article_id, article in articles.items():
-        # Skip if already published
-        if article.get('published', False):
-            continue
+    try:
+        articles_ref = db.reference('articles')
         
-        # Check if it's time to publish (based on publish_time)
-        publish_time = datetime.fromisoformat(article['publish_time'].replace('Z', '+00:00'))
+        # Get all articles
+        articles = articles_ref.get()
         
-        if now >= publish_time:
-            # Check that all required translations are complete (or at least English)
-            languages = article.get('languages', {})
-            english_ready = 'en' in languages and languages['en'].get('status') == 'completed'
+        if not articles:
+            logger.warning("No articles found in the database")
+            return []
+        
+        articles_to_publish = []
+        
+        now = datetime.now()
+        
+        for article_id, article_data in articles.items():
+            # Skip if already published
+            if article_data.get('published', False):
+                continue
+                
+            # Check if we're in the publishing window
+            publish_time = article_data.get('publish_time')
+            if publish_time:
+                publish_datetime = datetime.fromisoformat(publish_time.replace('Z', '+00:00'))
+                
+                # If we haven't reached the publishing time yet, skip
+                if now < publish_datetime:
+                    continue
             
-            if english_ready:
-                articles_to_publish.append(article)
+            # Add match_id if it doesn't exist (for compatibility)
+            if 'match_id' not in article_data and 'id' in article_data:
+                article_data['match_id'] = article_data['id']
+            
+            # Add article data to list with id
+            article_data['id'] = article_id
+            articles_to_publish.append(article_data)
+        
+        logger.info(f"Found {len(articles_to_publish)} articles to publish")
+        return articles_to_publish
     
-    logging.info(f"Found {len(articles_to_publish)} articles to publish")
-    return articles_to_publish
+    except Exception as e:
+        logger.error(f"Error getting articles to publish: {str(e)}")
+        return []
 
 def get_articles_to_expire():
     """Get articles to remove (expired)"""
-    articles_to_expire = []
+    logger.info("Getting articles to expire...")
     
-    # Articles reference
-    articles_ref = db.reference('articles')
-    articles = articles_ref.get() or {}
-    
-    now = datetime.now()
-    
-    for article_id, article in articles.items():
-        # Skip if not published
-        if not article.get('published', False):
-            continue
+    try:
+        articles_ref = db.reference('articles')
         
-        # Check if expired (based on expire_time)
-        expire_time = datetime.fromisoformat(article['expire_time'].replace('Z', '+00:00'))
+        # Get all articles
+        articles = articles_ref.get()
         
-        if now >= expire_time:
-            articles_to_expire.append({
-                'id': article_id,
-                'wp_post_id': article.get('wp_post_id', {}),
-                'title': article['title']
-            })
+        if not articles:
+            logger.warning("No articles found in the database")
+            return []
+        
+        articles_to_expire = []
+        
+        now = datetime.now()
+        
+        for article_id, article_data in articles.items():
+            # Skip if not published or already expired
+            if not article_data.get('published', False) or article_data.get('expired', False):
+                continue
+                
+            # Check if we're past the expiration time
+            expire_time = article_data.get('expire_time')
+            if expire_time:
+                expire_datetime = datetime.fromisoformat(expire_time.replace('Z', '+00:00'))
+                
+                # If we've passed the expiration time, add to list
+                if now > expire_datetime:
+                    # Add match_id if it doesn't exist (for compatibility)
+                    if 'match_id' not in article_data and 'id' in article_data:
+                        article_data['match_id'] = article_data['id']
+                    
+                    # Add article data to list with id
+                    article_data['id'] = article_id
+                    articles_to_expire.append(article_data)
+        
+        logger.info(f"Found {len(articles_to_expire)} articles to expire")
+        return articles_to_expire
     
-    logging.info(f"Found {len(articles_to_expire)} articles to remove")
-    return articles_to_expire
+    except Exception as e:
+        logger.error(f"Error getting articles to expire: {str(e)}")
+        return []
 
 def create_wp_post(article, lang='en'):
     """Create post on WordPress"""
-    if not WP_URL:
-        logging.error("Missing WordPress URL")
+    wp_url = get_wp_url()
+    if not wp_url:
         return None
     
     # Get content in the specified language
-    languages = article.get('languages', {})
+    title = article.get('title', 'Match Preview')
+    content = article.get('content', '')
     
-    if lang not in languages:
-        logging.error(f"Language {lang} not available for article {article['match_id']}")
-        return None
-    
-    lang_data = languages[lang]
-    title = lang_data.get('title') if lang != 'en' else article['title']
-    content = lang_data.get('content') if lang != 'en' else article['content']
+    # If language is not English, try to get the translation
+    if lang != 'en':
+        # Check both data structures
+        languages = article.get('languages', {})
+        translations = article.get('translations', {})
+        
+        lang_data = None
+        if lang in languages and languages[lang].get('content'):
+            lang_data = languages[lang]
+        elif lang in translations and translations[lang].get('content'):
+            lang_data = translations[lang]
+            
+        if lang_data:
+            title = lang_data.get('title', title)
+            content = lang_data.get('content', content)
+        else:
+            logger.warning(f"Translation not available for article {article.get('id')} in {lang}")
+            return None
     
     # Prepare team logos
-    home_team = article['home_team'].replace(' ', '-').lower()
-    away_team = article['away_team'].replace(' ', '-').lower()
+    home_team = article.get('home_team', '').replace(' ', '-').lower()
+    away_team = article.get('away_team', '').replace(' ', '-').lower()
     
-    # Add shortcode for team logos
-    if '[match_logos]' not in content:
+    # Add shortcode for team logos if not already present
+    if home_team and away_team and '[match_logos]' not in content:
         content = f'[match_logos home="{home_team}" away="{away_team}"]\n\n' + content
     
     # Prepare post data
@@ -144,19 +231,20 @@ def create_wp_post(article, lang='en'):
         'status': 'publish',
         'categories': [get_category_id('Football Predictions')],  # Default category
         'meta': {
-            'match_id': article['match_id'],
-            'home_team': article['home_team'],
-            'away_team': article['away_team'],
-            'competition': article['competition'],
-            'match_time': article['match_time'],
-            'expire_time': article['expire_time'],
+            'match_id': article.get('match_id', article.get('id', '')),
+            'home_team': article.get('home_team', ''),
+            'away_team': article.get('away_team', ''),
+            'competition': article.get('competition', ''),
+            'match_time': article.get('match_time', ''),
+            'expire_time': article.get('expire_time', ''),
             'article_language': lang
         }
     }
     
     # If it's a translation, add Polylang relation
-    if lang != 'en' and 'wp_post_id' in article and 'en' in article['wp_post_id']:
-        post_data['meta']['_pll_translation_of'] = article['wp_post_id']['en']
+    wp_post_id = article.get('wp_post_id', {})
+    if lang != 'en' and wp_post_id and 'en' in wp_post_id:
+        post_data['meta']['_pll_translation_of'] = wp_post_id['en']
     
     # Send request to WordPress
     headers = get_wp_auth_header()
@@ -164,8 +252,9 @@ def create_wp_post(article, lang='en'):
         return None
     
     try:
+        logger.info(f"Creating WordPress post: {title}")
         response = requests.post(
-            f"{WP_URL}/posts",
+            f"{wp_url}/posts",
             json=post_data,
             headers=headers
         )
@@ -173,15 +262,16 @@ def create_wp_post(article, lang='en'):
         if response.status_code in [200, 201]:
             return response.json()
         else:
-            logging.error(f"Publication error: {response.status_code} - {response.text}")
+            logger.error(f"Publication error: {response.status_code} - {response.text}")
             return None
     except Exception as e:
-        logging.error(f"WordPress request error: {str(e)}")
+        logger.error(f"WordPress request error: {str(e)}")
         return None
 
 def trash_wp_post(post_id):
     """Move post to trash"""
-    if not WP_URL or not post_id:
+    wp_url = get_wp_url()
+    if not wp_url or not post_id:
         return False
     
     headers = get_wp_auth_header()
@@ -189,31 +279,33 @@ def trash_wp_post(post_id):
         return False
     
     try:
+        logger.info(f"Trashing WordPress post {post_id}")
         # Update status to 'trash'
         response = requests.put(
-            f"{WP_URL}/posts/{post_id}",
+            f"{wp_url}/posts/{post_id}",
             json={'status': 'trash'},
             headers=headers
         )
         
         return response.status_code in [200, 201]
     except Exception as e:
-        logging.error(f"Post deletion error: {str(e)}")
+        logger.error(f"Post deletion error: {str(e)}")
         return False
 
 def get_category_id(category_name):
     """Get category ID from name (or create if it doesn't exist)"""
-    if not WP_URL:
-        return None
+    wp_url = get_wp_url()
+    if not wp_url:
+        return 1  # Default category ID
     
     headers = get_wp_auth_header()
     if not headers:
-        return None
+        return 1  # Default category ID
     
     try:
         # Search for category
         response = requests.get(
-            f"{WP_URL}/categories",
+            f"{wp_url}/categories",
             params={'search': category_name},
             headers=headers
         )
@@ -229,7 +321,7 @@ def get_category_id(category_name):
             # Otherwise create new category
             if len(categories) == 0:
                 create_response = requests.post(
-                    f"{WP_URL}/categories",
+                    f"{wp_url}/categories",
                     json={'name': category_name},
                     headers=headers
                 )
@@ -240,21 +332,30 @@ def get_category_id(category_name):
         # Default category if all else fails
         return 1
     except Exception as e:
-        logging.error(f"Error getting category: {str(e)}")
+        logger.error(f"Error getting category: {str(e)}")
         return 1
 
 def publish_article(article):
     """Publish article in all available languages"""
     results = {}
-    match_id = article['match_id']
+    article_id = article.get('id', '')
+    match_id = article.get('match_id', article_id)
     
-    # Get available languages
+    # Get available languages from both data structures for compatibility
     languages = article.get('languages', {})
-    available_langs = [lang for lang in LANGUAGES if lang in languages and languages[lang].get('status') == 'completed']
+    translations = article.get('translations', {})
+    
+    # Combine available languages from both structures
+    available_langs = set()
+    for lang in LANGUAGES:
+        if lang in languages and languages[lang].get('status') == 'completed':
+            available_langs.add(lang)
+        if lang in translations and translations[lang].get('content'):
+            available_langs.add(lang)
     
     # First publish in English (primary language)
     if 'en' in available_langs:
-        logging.info(f"Publishing {match_id} in English")
+        logger.info(f"Publishing {match_id} in English")
         en_result = create_wp_post(article, 'en')
         
         if en_result:
@@ -262,15 +363,18 @@ def publish_article(article):
             results['en'] = wp_post_id
             
             # Save WordPress ID to Firebase
-            ref = db.reference(f'articles/{match_id}/wp_post_id')
+            ref = db.reference(f'articles/{article_id}/wp_post_id')
             ref.update({'en': wp_post_id})
             
-            logging.info(f"Published {match_id} in English: WP ID {wp_post_id}")
+            logger.info(f"Published {match_id} in English: WP ID {wp_post_id}")
             
             # Wait before publishing translations
             time.sleep(2)
+        else:
+            logger.error(f"Failed to publish {match_id} in English")
+            return False
     else:
-        logging.error(f"English version not available for {match_id}")
+        logger.error(f"English version not available for {match_id}")
         return False
     
     # Then publish translations
@@ -278,7 +382,7 @@ def publish_article(article):
         if lang == 'en':  # Skip English (already published)
             continue
             
-        logging.info(f"Publishing {match_id} in {lang}")
+        logger.info(f"Publishing {match_id} in {lang}")
         lang_result = create_wp_post(article, lang)
         
         if lang_result:
@@ -286,18 +390,18 @@ def publish_article(article):
             results[lang] = wp_post_id
             
             # Save WordPress ID to Firebase
-            ref = db.reference(f'articles/{match_id}/wp_post_id/{lang}')
+            ref = db.reference(f'articles/{article_id}/wp_post_id/{lang}')
             ref.set(wp_post_id)
             
-            logging.info(f"Published {match_id} in {lang}: WP ID {wp_post_id}")
+            logger.info(f"Published {match_id} in {lang}: WP ID {wp_post_id}")
         else:
-            logging.error(f"Failed to publish {match_id} in {lang}")
+            logger.error(f"Failed to publish {match_id} in {lang}")
         
         # Wait between requests
         time.sleep(2)
     
     # Update article status to published
-    ref = db.reference(f'articles/{match_id}')
+    ref = db.reference(f'articles/{article_id}')
     ref.update({
         'published': True,
         'wp_post_id': results,
@@ -308,11 +412,11 @@ def publish_article(article):
 
 def expire_article(article):
     """Remove expired article from WordPress"""
-    article_id = article['id']
+    article_id = article.get('id', '')
     wp_posts = article.get('wp_post_id', {})
     
     if not wp_posts:
-        logging.warning(f"No WordPress IDs found for article {article_id}")
+        logger.warning(f"No WordPress IDs found for article {article_id}")
         return False
     
     success = True
@@ -322,12 +426,12 @@ def expire_article(article):
         if not post_id:
             continue
             
-        logging.info(f"Trashing {article_id} in {lang}: WP ID {post_id}")
+        logger.info(f"Trashing {article_id} in {lang}: WP ID {post_id}")
         
         if trash_wp_post(post_id):
-            logging.info(f"Successfully trashed {article_id} in {lang}")
+            logger.info(f"Successfully trashed {article_id} in {lang}")
         else:
-            logging.error(f"Failed to trash {article_id} in {lang}")
+            logger.error(f"Failed to trash {article_id} in {lang}")
             success = False
         
         # Wait between requests
@@ -343,14 +447,37 @@ def expire_article(article):
     
     return success
 
+def update_component_status(status='success', details=None):
+    """Update component status in Firebase"""
+    try:
+        ref = db.reference('health/publishing')
+        update_data = {
+            'last_run': datetime.now().isoformat(),
+            'status': status
+        }
+        
+        if details:
+            update_data['details'] = details
+            
+        ref.update(update_data)
+        logger.info(f"Updated component status: {status}")
+    except Exception as e:
+        logger.error(f"Error updating component status: {str(e)}")
+
 def main():
     """Main function"""
     start_time = datetime.now()
-    logging.info(f"Starting WordPress Publisher - {start_time.isoformat()}")
+    logger.info(f"Starting WordPress Publisher at {start_time.isoformat()}")
     
     try:
         # 1. Initialize Firebase
         initialize_firebase()
+        
+        # Check WordPress credentials
+        if not get_wp_url() or not get_wp_auth_header():
+            logger.error("WordPress credentials or URL missing")
+            update_component_status('error', 'WordPress credentials or URL missing')
+            return 1
         
         # 2. Get articles to publish
         articles_to_publish = get_articles_to_publish()
@@ -358,59 +485,49 @@ def main():
         # 3. Get articles to expire
         articles_to_expire = get_articles_to_expire()
         
-        # 4. Publish new articles
+        # 4. Publish new articles (max 5 per run)
         published_count = 0
-        for article in articles_to_publish:
+        articles_to_process = articles_to_publish[:5]
+        
+        for article in articles_to_process:
             if publish_article(article):
                 published_count += 1
-                logging.info(f"Successfully published article {article['match_id']}")
+                logger.info(f"Successfully published article {article.get('id', '')}")
             else:
-                logging.error(f"Failed to publish article {article['match_id']}")
+                logger.error(f"Failed to publish article {article.get('id', '')}")
             
             # Wait between publications
             time.sleep(5)
         
-        # 5. Expire old articles
+        # 5. Expire old articles (max 5 per run)
         expired_count = 0
+        articles_to_expire = articles_to_expire[:5]
+        
         for article in articles_to_expire:
             if expire_article(article):
                 expired_count += 1
-                logging.info(f"Successfully expired article {article['id']}")
+                logger.info(f"Successfully expired article {article.get('id', '')}")
             else:
-                logging.error(f"Failed to expire article {article['id']}")
+                logger.error(f"Failed to expire article {article.get('id', '')}")
             
             # Wait between operations
             time.sleep(2)
         
         # 6. Update health status
-        health_ref = db.reference('health/publish_wordpress')
-        health_ref.set({
-            'last_run': datetime.now().isoformat(),
-            'articles_published': published_count,
-            'articles_expired': expired_count,
-            'status': 'success'
-        })
+        if published_count > 0 or expired_count > 0:
+            update_component_status('success', f"Published {published_count}, expired {expired_count}")
+        else:
+            update_component_status('success', "No articles to process")
+        
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        logger.info(f"WordPress Publisher completed in {duration} seconds")
+        return 0
         
     except Exception as e:
-        logging.error(f"General error: {str(e)}")
-        
-        # Update health status with error
-        try:
-            health_ref = db.reference('health/publish_wordpress')
-            health_ref.set({
-                'last_run': datetime.now().isoformat(),
-                'status': 'error',
-                'error_message': str(e)
-            })
-        except:
-            pass
-            
+        logger.error(f"General error: {str(e)}")
+        update_component_status('error', str(e))
         return 1
-    
-    end_time = datetime.now()
-    duration = (end_time - start_time).total_seconds()
-    logging.info(f"WordPress Publisher completed in {duration} seconds")
-    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

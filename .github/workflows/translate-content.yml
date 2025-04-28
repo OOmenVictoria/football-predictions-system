@@ -1,10 +1,8 @@
 name: Translate Content
-
 on:
   schedule:
     - cron: '0 */12 * * *'  # Ogni 12 ore
   workflow_dispatch:  # Permette esecuzione manuale
-
 jobs:
   translate:
     runs-on: ubuntu-latest
@@ -22,8 +20,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests firebase-admin python-dotenv
           
-      - name: Translate articles (test)
-        run: python -u scripts/translation/translator_test.py
+      - name: Translate articles
+        run: python -u scripts/translation/translator.py
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}

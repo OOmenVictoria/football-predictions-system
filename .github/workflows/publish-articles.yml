@@ -1,10 +1,8 @@
 name: Publish Articles
-
 on:
   schedule:
     - cron: '0 */12 * * *'  # Ogni 12 ore
   workflow_dispatch:  # Permette esecuzione manuale
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -22,14 +20,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests firebase-admin python-dotenv
           
-      - name: Publish articles (test)
-        run: python -u scripts/publishing/publisher_test.py
+      - name: Publish articles
+        run: python -u scripts/publishing/publish_to_wordpress.py
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
           WP_USER: ${{ secrets.WP_USER }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-          WP_API_URL: ${{ secrets.WP_API_URL }}
+          WP_URL: ${{ secrets.WP_URL }}
           
       - name: Update health status
         run: |

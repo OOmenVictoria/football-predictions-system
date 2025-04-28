@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script coordinatore giornaliero - Eseguito una volta al giorno
-Coordina i vari componenti del sistema
+Coordina i vari componenti del sistema e supporta sia PythonAnywhere che GitHub Actions
 """
 import os
 import sys
@@ -11,29 +11,55 @@ import time
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, db
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # Se dotenv non è disponibile, procedi comunque
+    pass
 
 # Configurazione logging
-log_dir = os.path.expanduser('~/football-predictions/logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, f"coordinator_{datetime.now().strftime('%Y%m%d')}.log")
+# Configura il logging in base all'ambiente
+if os.environ.get('GITHUB_ACTIONS'):
+    # Per GitHub Actions, usa il logging su console
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
+else:
+    # Per PythonAnywhere, usa il logging su file
+    log_dir = os.path.expanduser('~/football-predictions/logs')
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"coordinator_{datetime.now().strftime('%Y%m%d')}.log")
+    
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
 
-logging.basicConfig(
-    filename=log_file,
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-# Variabili globali
-load_dotenv()
+logger = logging.getLogger("coordinator")
 
 def initialize_firebase():
     """Inizializza connessione Firebase"""
     try:
         firebase_admin.get_app()
     except ValueError:
-        cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
-        cred = credentials.Certificate(cred_path)
+        # GitHub Actions o ambiente CI
+        if os.environ.get('GITHUB_ACTIONS') or os.environ.get('CI'):
+            firebase_credentials = os.environ.get('FIREBASE_CREDENTIALS')
+            if firebase_credentials:
+                with open('firebase-credentials.json', 'w') as f:
+                    f.write(firebase_credentials)
+                cred = credentials.Certificate('firebase-credentials.json')
+            else:
+                raise Exception("FIREBASE_CREDENTIALS not found")
+        else:
+            # Uso locale o PythonAnywhere
+            cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
+            cred = credentials.Certificate(cred_path)
+        
         firebase_admin.initialize_app(cred, {
             'databaseURL': os.getenv('FIREBASE_DB_URL')
         })
@@ -41,12 +67,35 @@ def initialize_firebase():
 
 def run_script(script_path, script_name):
     """Esegue uno script Python e gestisce l'output"""
-    full_path = os.path.expanduser(script_path)
-    logging.info(f"Avvio script: {script_name}")
+    # Determina il percorso completo in base all'ambiente
+    if os.environ.get('GITHUB_ACTIONS'):
+        # Per GitHub Actions, usa percorsi relativi
+        if script_path.startswith('~/football-predictions/'):
+            script_path = script_path.replace('~/football-predictions/', 'scripts/')
+        full_path = script_path
+    else:
+        # Per PythonAnywhere, usa percorsi assoluti
+        full_path = os.path.expanduser(script_path)
+    
+    logger.info(f"Avvio script: {script_name} - {full_path}")
     
     try:
         env = os.environ.copy()
-        env["PYTHONPATH"] = os.path.expanduser("~/football-predictions")
+        
+        # Configura PYTHONPATH in base all'ambiente
+        if not os.environ.get('GITHUB_ACTIONS'):
+            env["PYTHONPATH"] = os.path.expanduser("~/football-predictions")
+        
+        # Verifica esistenza script
+        if not os.path.exists(full_path):
+            logger.warning(f"Script {full_path} non trovato")
+            return False
+        
+        # Rendi eseguibile se possibile
+        try:
+            os.chmod(full_path, 0o755)
+        except:
+            pass
         
         start_time = datetime.now()
         result = subprocess.run(
@@ -58,15 +107,19 @@ def run_script(script_path, script_name):
         
         duration = (datetime.now() - start_time).total_seconds()
         
+        # Registra output indipendentemente dal successo/fallimento
+        if result.stdout:
+            logger.info(f"{script_name} stdout: {result.stdout[:500]}...")
+        
         if result.returncode == 0:
-            logging.info(f"Script {script_name} completato con successo in {duration:.2f} secondi")
+            logger.info(f"Script {script_name} completato con successo in {duration:.2f} secondi")
             return True
         else:
-            logging.error(f"Script {script_name} fallito con errore: {result.stderr}")
+            logger.error(f"Script {script_name} fallito con errore: {result.stderr}")
             return False
             
     except Exception as e:
-        logging.error(f"Errore nell'esecuzione di {script_name}: {str(e)}")
+        logger.error(f"Errore nell'esecuzione di {script_name}: {str(e)}")
         return False
 
 def check_system_health():
@@ -79,16 +132,33 @@ def check_system_health():
             'last_check': timestamp,
             'status': 'ok'
         })
-        logging.info("Health check completato")
+        logger.info("Health check completato")
         return True
     except Exception as e:
-        logging.error(f"Health check fallito: {str(e)}")
+        logger.error(f"Health check fallito: {str(e)}")
         return False
+
+def update_component_status(component, status='success', details=None):
+    """Aggiorna lo stato di un componente in Firebase"""
+    try:
+        ref = db.reference(f'health/{component}')
+        update_data = {
+            'last_run': datetime.now().isoformat(),
+            'status': status
+        }
+        
+        if details:
+            update_data['details'] = details
+            
+        ref.update(update_data)
+        logger.info(f"Aggiornato stato {component}: {status}")
+    except Exception as e:
+        logger.error(f"Errore aggiornamento stato {component}: {str(e)}")
 
 def main():
     """Funzione principale"""
     start_time = datetime.now()
-    logging.info(f"Avvio coordinatore - {start_time.isoformat()}")
+    logger.info(f"Avvio coordinatore - {start_time.isoformat()}")
     
     try:
         # 1. Inizializza sistema
@@ -97,59 +167,105 @@ def main():
         # 2. Verifica stato sistema
         system_healthy = check_system_health()
         if not system_healthy:
-            logging.error("Sistema non in salute, operazioni limitate")
+            logger.error("Sistema non in salute, operazioni limitate")
             # Continua comunque per tentare recupero
         
-        # 3. Esegui script di raccolta dati
-        data_script = "~/football-predictions/scripts/data_collection/fetch_matches.py"
-        fetch_success = run_script(data_script, "fetch_matches")
+        # Definisci script da eseguire con i percorsi corretti
+        scripts = [
+            {
+                'path': "~/football-predictions/scripts/data_collection/fetch_matches.py",
+                'name': "fetch_matches",
+                'component': "data_collection",
+                'critical': True
+            },
+            {
+                'path': "~/football-predictions/scripts/data_collection/fetch_team_stats.py",
+                'name': "fetch_team_stats",
+                'component': "team_stats",
+                'critical': False
+            },
+            {
+                'path': "~/football-predictions/scripts/data_collection/fetch_h2h_stats.py",
+                'name': "fetch_h2h_stats",
+                'component': "h2h_stats",
+                'critical': False
+            },
+            {
+                'path': "~/football-predictions/scripts/content_generation/generate_articles.py",
+                'name': "generate_articles",
+                'component': "content_generation",
+                'critical': True
+            },
+            {
+                'path': "~/football-predictions/scripts/translation/translator.py",  # Percorso aggiornato
+                'name': "translator",
+                'component': "translation",
+                'critical': True
+            },
+            {
+                'path': "~/football-predictions/scripts/publishing/publish_to_wordpress.py",
+                'name': "publish_to_wordpress",
+                'component': "publishing",
+                'critical': True
+            }
+        ]
         
-        if not fetch_success:
-            logging.warning("Raccolta dati fallita, le operazioni successive potrebbero essere compromesse")
+        # Esegui ogni script
+        results = {}
+        
+        for script in scripts:
+            path = script['path']
+            name = script['name']
+            component = script['component']
+            critical = script['critical']
             
-        # Pausa per evitare sovraccarichi
-        time.sleep(5)
+            # Esegui lo script se esiste
+            if os.environ.get('GITHUB_ACTIONS') or os.path.exists(os.path.expanduser(path)):
+                success = run_script(path, name)
+                results[component] = success
+                
+                # Aggiorna lo stato del componente
+                if success:
+                    update_component_status(component, 'success')
+                else:
+                    update_component_status(component, 'error', f"Script {name} failed")
+                    
+                    # Se un componente critico fallisce, registra avviso
+                    if critical:
+                        logger.warning(f"Componente critico {component} fallito, operazioni successive potrebbero essere compromesse")
+                
+                # Pausa tra script
+                time.sleep(5)
+            else:
+                logger.info(f"Script {path} non trovato, saltando")
         
-        # 4. Esegui script di statistiche squadre (se esiste)
-        stats_script = "~/football-predictions/scripts/data_collection/fetch_team_stats.py"
-        if os.path.exists(os.path.expanduser(stats_script)):
-            run_script(stats_script, "fetch_team_stats")
-            time.sleep(5)
+        # Calcola riepilogo
+        components_ran = len(results)
+        components_succeeded = sum(1 for success in results.values() if success)
+        components_failed = sum(1 for success in results.values() if not success)
         
-        # 5. Esegui script di statistiche h2h (se esiste)
-        h2h_script = "~/football-predictions/scripts/data_collection/fetch_h2h_stats.py"
-        if os.path.exists(os.path.expanduser(h2h_script)):
-            run_script(h2h_script, "fetch_h2h_stats")
-            time.sleep(5)
+        # Aggiorna stato finale coordinatore
+        if components_failed == 0:
+            status = 'success'
+            details = f"Eseguiti {components_ran} componenti, tutti con successo"
+        elif components_succeeded > 0:
+            status = 'warning'
+            details = f"Eseguiti {components_ran} componenti, {components_succeeded} con successo, {components_failed} falliti"
+        else:
+            status = 'error'
+            details = f"Eseguiti {components_ran} componenti, tutti falliti"
         
-        # 6. Esegui generazione articoli (se esiste)
-        articles_script = "~/football-predictions/scripts/content_generation/generate_articles.py"
-        if os.path.exists(os.path.expanduser(articles_script)):
-            run_script(articles_script, "generate_articles")
-            time.sleep(5)
-            
-        # 7. Esegui traduzione articoli (se esiste)
-        translation_script = "~/football-predictions/scripts/translation/translate_articles.py"
-        if os.path.exists(os.path.expanduser(translation_script)):
-            run_script(translation_script, "translate_articles")
-            time.sleep(5)
-            
-        # 8. Esegui pubblicazione WordPress (se esiste)
-        publishing_script = "~/football-predictions/scripts/publishing/publish_to_wordpress.py"
-        if os.path.exists(os.path.expanduser(publishing_script)):
-            run_script(publishing_script, "publish_to_wordpress")
-        
-        # 9. Aggiorna stato salute finale
         ref = db.reference('health/coordinator')
         ref.update({
             'completed_at': datetime.now().isoformat(),
-            'status': 'success'
+            'status': status,
+            'details': details
         })
         
-        logging.info("Coordinatore completato con successo")
+        logger.info(f"Coordinatore completato: {details}")
         
     except Exception as e:
-        logging.error(f"Errore generale: {str(e)}")
+        logger.error(f"Errore generale: {str(e)}")
         
         # Aggiorna stato health con errore
         try:
@@ -166,7 +282,7 @@ def main():
     
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
-    logging.info(f"Esecuzione completata in {duration} secondi")
+    logger.info(f"Esecuzione completata in {duration:.2f} secondi")
     
     return 0
 

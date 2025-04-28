@@ -1,40 +1,54 @@
 #!/usr/bin/env python3
 """
-Translate Articles - Translates articles into configured languages
-Uses free translation services with fallback and caching
+Translator - Processes articles in English and translates them to multiple languages.
+Uses free translation services with rotation, fallbacks and caching.
 """
 import os
 import sys
-import logging
-import time
-import random
 import json
-import hashlib
+import time
+import logging
+import random
+import re
 import requests
+import hashlib
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, db
-from dotenv import load_dotenv
 
-# Logging configuration
-log_dir = os.path.expanduser('~/football-predictions/logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, f"translate_articles_{datetime.now().strftime('%Y%m%d')}.log")
+# Languages to translate to (ISO codes)
+TARGET_LANGUAGES = [
+    'es',  # Spanish
+    'it',  # Italian
+    'de',  # German
+    'fr',  # French
+    'pt',  # Portuguese
+    'nl',  # Dutch
+    'pl',  # Polish
+    'sv',  # Swedish
+    'ja',  # Japanese
+    'zh',  # Chinese
+    'no',  # Norwegian
+    'tr',  # Turkish
+    'ar',  # Arabic
+    'ru',  # Russian
+]
 
+# Configure logging
 logging.basicConfig(
-    filename=log_file,
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
 )
+logger = logging.getLogger("translator")
 
-# Global variables
-load_dotenv()
-LANGUAGES = os.getenv('LANGUAGES', 'en,it,es,fr,de,pt,ar,ru,ja,pl,zh,tr,nl,sv,el').split(',')
+# Translation cache
+TRANSLATION_CACHE = {}
 
 class TranslationCache:
     """Class to manage translation cache"""
     def __init__(self):
-        self.cache = {}
+        self.cache = TRANSLATION_CACHE
     
     def get_key(self, text, source_lang, target_lang):
         """Generate cache key based on text and languages"""
@@ -64,6 +78,7 @@ class LibreTranslateService(TranslationService):
         self.endpoints = [
             "https://libretranslate.de",
             "https://translate.argosopentech.com",
+            "https://translate.terraprint.co",
             "https://libretranslate.com"
         ]
     
@@ -86,16 +101,21 @@ class LibreTranslateService(TranslationService):
                 "User-Agent": get_random_user_agent()
             }
             
+            # Add API key if available
+            api_key = os.getenv('LIBRE_TRANSLATE_API_KEY')
+            if api_key:
+                data["api_key"] = api_key
+            
             response = requests.post(url, json=data, headers=headers, timeout=30)
             
             if response.status_code == 200:
                 result = response.json()
                 return result.get("translatedText")
             else:
-                logging.error(f"LibreTranslate error: {response.status_code} - {response.text}")
+                logger.warning(f"LibreTranslate error: {response.status_code} - {response.text}")
                 return None
         except Exception as e:
-            logging.error(f"LibreTranslate error: {str(e)}")
+            logger.error(f"LibreTranslate error: {str(e)}")
             return None
 
 class LingvaTranslateService(TranslationService):
@@ -124,42 +144,53 @@ class LingvaTranslateService(TranslationService):
                 result = response.json()
                 return result.get("translation")
             else:
-                logging.error(f"Lingva error: {response.status_code} - {response.text}")
+                logger.warning(f"Lingva error: {response.status_code} - {response.text}")
                 return None
         except Exception as e:
-            logging.error(f"Lingva error: {str(e)}")
+            logger.error(f"Lingva error: {str(e)}")
             return None
 
-class MultiTranslator:
-    """Manages multiple translation services with fallback"""
-    def __init__(self):
-        self.services = [
-            LibreTranslateService(),
-            LingvaTranslateService()
-        ]
-        self.cache = TranslationCache()
-    
+class GoogleTranslateFreeService(TranslationService):
+    """Free Google Translate service (unofficial)"""
     def translate(self, text, source_lang, target_lang):
-        """Translate text using the first available service"""
-        # Check cache
-        cached = self.cache.get(text, source_lang, target_lang)
-        if cached:
-            logging.info(f"Using translation from cache ({len(text)} characters)")
-            return cached
-        
-        # Try each service
-        for service in self.services:
-            try:
-                translated = service.translate(text, source_lang, target_lang)
-                if translated:
-                    # Save in cache
-                    self.cache.set(text, source_lang, target_lang, translated)
-                    return translated
-            except Exception as e:
-                logging.error(f"Translation service error: {str(e)}")
-                continue
-        
-        return None
+        """Use a scrappy free alternative - web-based translation"""
+        try:
+            url = "https://translate.googleapis.com/translate_a/single"
+            
+            params = {
+                "client": "gtx",
+                "sl": source_lang,
+                "tl": target_lang,
+                "dt": "t",
+                "q": text
+            }
+            
+            headers = {
+                "User-Agent": get_random_user_agent()
+            }
+            
+            response = requests.get(url, params=params, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+                    translated_text = ""
+                    
+                    # Extract translation from the nested JSON structure
+                    for part in result[0]:
+                        if part[0]:
+                            translated_text += part[0]
+                    
+                    return translated_text
+                except Exception as e:
+                    logger.error(f"Error parsing free translation response: {str(e)}")
+                    return None
+            else:
+                logger.warning(f"Free translation API error: {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Error using free translation: {str(e)}")
+            return None
 
 def get_random_user_agent():
     """Return a random User-Agent to avoid blocks"""
@@ -177,188 +208,323 @@ def initialize_firebase():
     try:
         firebase_admin.get_app()
     except ValueError:
-        cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
-        cred = credentials.Certificate(cred_path)
+        # GitHub Actions or CI environment
+        if os.environ.get('GITHUB_ACTIONS') or os.environ.get('CI'):
+            firebase_credentials = os.environ.get('FIREBASE_CREDENTIALS')
+            if firebase_credentials:
+                with open('firebase-credentials.json', 'w') as f:
+                    f.write(firebase_credentials)
+                cred = credentials.Certificate('firebase-credentials.json')
+            else:
+                raise Exception("FIREBASE_CREDENTIALS not found")
+        else:
+            # Local use
+            cred_path = os.path.expanduser('~/football-predictions/creds/firebase-credentials.json')
+            cred = credentials.Certificate(cred_path)
+        
         firebase_admin.initialize_app(cred, {
             'databaseURL': os.getenv('FIREBASE_DB_URL')
         })
     return True
 
 def get_articles_to_translate():
-    """Get articles that need translation"""
-    articles_to_translate = []
+    """Get articles that need translation from Firebase"""
+    logger.info("Getting articles to translate...")
     
-    # Articles reference
-    articles_ref = db.reference('articles')
-    articles = articles_ref.get() or {}
-    
-    for article_id, article in articles.items():
-        # Check if there are languages to translate
-        languages = article.get('languages', {})
+    try:
+        articles_ref = db.reference('articles')
         
-        for lang in LANGUAGES:
-            # Skip English (original)
-            if lang == 'en':
+        # Query for articles that are in English (source) and need translation
+        articles = articles_ref.get()
+        
+        if not articles:
+            logger.warning("No articles found in the database")
+            return []
+        
+        articles_to_translate = []
+        
+        for article_id, article_data in articles.items():
+            # Skip non-English articles
+            if article_data.get('language', 'en') != 'en':
                 continue
+                
+            # Check if article already has all translations
+            translations = article_data.get('translations', {})
+            languages = article_data.get('languages', {})
             
-            # If language not yet translated
-            if lang not in languages or languages[lang].get('status') != 'completed':
-                articles_to_translate.append({
-                    'id': article_id,
-                    'article': article,
-                    'target_lang': lang
-                })
+            # Check both translations and languages keys for backward compatibility
+            missing_languages = []
+            for lang in TARGET_LANGUAGES:
+                # Skip English
+                if lang == 'en':
+                    continue
+                    
+                # Check if translation is missing in either structure
+                translation_missing = lang not in translations or not translations[lang].get('content')
+                language_missing = lang not in languages or languages[lang].get('status') != 'completed'
+                
+                if translation_missing and language_missing:
+                    missing_languages.append(lang)
+            
+            if missing_languages:
+                # Add article data to list with id and missing languages
+                article_data['id'] = article_id
+                article_data['missing_languages'] = missing_languages
+                articles_to_translate.append(article_data)
+        
+        logger.info(f"Found {len(articles_to_translate)} articles to translate")
+        return articles_to_translate
     
-    logging.info(f"Found {len(articles_to_translate)} articles/languages to translate")
-    return articles_to_translate
+    except Exception as e:
+        logger.error(f"Error getting articles to translate: {str(e)}")
+        return []
 
-def translate_article(article_data, translator):
-    """Translate an article to a specific language"""
-    article = article_data['article']
-    target_lang = article_data['target_lang']
+def translate_text(text, source_lang="en", target_lang="es"):
+    """Translate text using multiple services with fallback and caching"""
+    # Initialize services and cache
+    cache = TranslationCache()
     
-    # Title
-    title_orig = article['title']
-    title_trans = translator.translate(title_orig, 'en', target_lang)
+    # Check cache first
+    cached_translation = cache.get(text, source_lang, target_lang)
+    if cached_translation:
+        logger.info(f"Using cached translation ({len(text)} chars)")
+        return cached_translation
     
-    if not title_trans:
-        logging.error(f"Error translating title to {target_lang}")
-        return None
+    # Initialize translation services
+    services = [
+        LibreTranslateService(),
+        LingvaTranslateService(),
+        GoogleTranslateFreeService()
+    ]
     
-    # Split content into blocks for efficient translation
-    content_orig = article['content']
+    # Try each service until successful
+    for service in services:
+        try:
+            service_name = service.__class__.__name__
+            translated = service.translate(text, source_lang, target_lang)
+            
+            if translated:
+                logger.info(f"Translation successful using {service_name}")
+                # Save to cache
+                cache.set(text, source_lang, target_lang, translated)
+                return translated
+        except Exception as e:
+            logger.error(f"Error with {service.__class__.__name__}: {str(e)}")
+            continue
     
-    # Split by paragraphs (for more efficient translations)
-    paragraphs = content_orig.split('\n\n')
+    # If all methods fail
+    logger.error(f"All translation methods failed for language: {target_lang}")
+    return None
+
+def translate_chunks(text, max_chunk_size=1000, source_lang="en", target_lang="es"):
+    """Split text into chunks and translate each chunk"""
+    # Split text into paragraphs
+    paragraphs = text.split('\n\n')
+    
+    # Translate each paragraph
     translated_paragraphs = []
     
-    for para in paragraphs:
+    for paragraph in paragraphs:
         # Skip empty paragraphs
-        if not para.strip():
+        if not paragraph.strip():
             translated_paragraphs.append('')
             continue
+            
+        # For long paragraphs, split further
+        if len(paragraph) > max_chunk_size:
+            # Split by sentences
+            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+            chunk = ""
+            chunks = []
+            
+            for sentence in sentences:
+                if len(chunk) + len(sentence) > max_chunk_size:
+                    if chunk:
+                        chunks.append(chunk)
+                    chunk = sentence
+                else:
+                    if chunk:
+                        chunk += " " + sentence
+                    else:
+                        chunk = sentence
+            
+            if chunk:
+                chunks.append(chunk)
+                
+            # Translate each chunk
+            translated_chunks = []
+            for chunk in chunks:
+                # Add some delay between chunks to avoid rate limits
+                time.sleep(random.uniform(1, 2))
+                translated = translate_text(chunk, source_lang, target_lang)
+                if translated:
+                    translated_chunks.append(translated)
+                else:
+                    # If translation fails, use original
+                    translated_chunks.append(chunk)
+            
+            translated_paragraph = " ".join(translated_chunks)
+        else:
+            # For short paragraphs, translate directly
+            translated_paragraph = translate_text(paragraph, source_lang, target_lang) or paragraph
         
-        # Translate paragraph
-        trans_para = translator.translate(para, 'en', target_lang)
-        
-        if not trans_para:
-            logging.error(f"Error translating paragraph to {target_lang}")
-            trans_para = para  # Use original in case of error
-        
-        translated_paragraphs.append(trans_para)
-        
-        # Pause between translations to respect API limits
-        time.sleep(1)
+        translated_paragraphs.append(translated_paragraph)
+        # Add delay between paragraphs
+        time.sleep(random.uniform(1, 3))
     
-    # Reassemble content
-    content_trans = '\n\n'.join(translated_paragraphs)
-    
-    # Create translated version
-    translated = {
-        'title': title_trans,
-        'content': content_trans,
-        'language': target_lang,
-        'status': 'completed',
-        'created_at': datetime.now().isoformat(),
-        'source_language': 'en'
-    }
-    
-    return translated
+    # Join translated paragraphs
+    return '\n\n'.join(translated_paragraphs)
 
-def save_translation(article_id, lang, translation):
-    """Save translation to Firebase"""
-    ref = db.reference(f'articles/{article_id}/languages/{lang}')
-    ref.set(translation)
-    
-    # Update timestamp
-    update_ref = db.reference(f'articles/{article_id}')
-    update_ref.update({
-        'updated_at': datetime.now().isoformat()
-    })
-    
-    return True
+def translate_article(article, lang):
+    """Translate an article to a target language"""
+    try:
+        logger.info(f"Translating article {article['id']} to {lang}")
+        
+        # Update status to "in progress"
+        try:
+            status_ref = db.reference(f'articles/{article["id"]}/languages/{lang}')
+            status_ref.set({
+                'status': 'translating',
+                'started_at': datetime.now().isoformat()
+            })
+        except Exception as e:
+            logger.warning(f"Could not update translation status: {str(e)}")
+        
+        # Get original content
+        original_content = article.get('content', '')
+        
+        if not original_content:
+            logger.warning(f"Article {article['id']} has no content to translate")
+            return None
+        
+        # Translate title (limited to 200 chars to avoid rate limits)
+        original_title = article.get('title', '')
+        if len(original_title) > 200:
+            original_title = original_title[:197] + "..."
+        
+        translated_title = translate_text(original_title, "en", lang)
+        
+        # Translate content in chunks to avoid length limits
+        translated_content = translate_chunks(original_content, 1000, "en", lang)
+        
+        # Create translation object
+        translation = {
+            'title': translated_title or original_title,
+            'content': translated_content or original_content,
+            'translated_at': datetime.now().isoformat(),
+            'language': lang,
+            'status': 'completed'
+        }
+        
+        # Save translations in both formats for compatibility
+        # Format 1: languages/{lang}
+        lang_ref = db.reference(f'articles/{article["id"]}/languages/{lang}')
+        lang_ref.set(translation)
+        
+        # Format 2: translations/{lang}
+        trans_ref = db.reference(f'articles/{article["id"]}/translations/{lang}')
+        trans_ref.set(translation)
+        
+        logger.info(f"Saved translation for article {article['id']} to {lang}")
+        return translation
+    except Exception as e:
+        logger.error(f"Error translating article {article['id']} to {lang}: {str(e)}")
+        # Update status to failed
+        try:
+            status_ref = db.reference(f'articles/{article["id"]}/languages/{lang}')
+            status_ref.update({
+                'status': 'failed',
+                'error': str(e),
+                'failed_at': datetime.now().isoformat()
+            })
+        except Exception as inner_e:
+            logger.error(f"Could not update failure status: {str(inner_e)}")
+        return None
+
+def update_component_status(status='success', details=None):
+    """Update component status in Firebase"""
+    try:
+        ref = db.reference('health/translation')
+        update_data = {
+            'last_run': datetime.now().isoformat(),
+            'status': status
+        }
+        
+        if details:
+            update_data['details'] = details
+            
+        ref.update(update_data)
+        logger.info(f"Updated component status: {status}")
+    except Exception as e:
+        logger.error(f"Error updating component status: {str(e)}")
 
 def main():
     """Main function"""
     start_time = datetime.now()
-    logging.info(f"Starting Translation Service - {start_time.isoformat()}")
-    
     try:
-        # 1. Initialize Firebase
+        logger.info(f"Starting translation process at {start_time.isoformat()}")
+        
+        # Initialize Firebase
         initialize_firebase()
         
-        # 2. Create translator
-        translator = MultiTranslator()
+        # Get articles that need translation
+        articles = get_articles_to_translate()
         
-        # 3. Get articles to translate
-        all_to_translate = get_articles_to_translate()
+        if not articles:
+            logger.warning("No articles to translate")
+            update_component_status('success', 'No articles to translate')
+            return 0
         
-        # 4. Limit per execution (max 10 translations per run)
-        to_translate = all_to_translate[:10]
+        # Process at most 5 articles per run to avoid rate limits
+        articles_to_process = articles[:5]
         
-        # 5. Translate and save
-        translated_count = 0
-        for item in to_translate:
-            article_id = item['id']
-            target_lang = item['target_lang']
-            
-            logging.info(f"Translating article {article_id} to {target_lang}")
-            
-            # Update status to "in progress"
-            ref = db.reference(f'articles/{article_id}/languages/{target_lang}')
-            ref.set({
-                'status': 'translating',
-                'started_at': datetime.now().isoformat()
-            })
-            
-            # Translate
-            translation = translate_article(item, translator)
-            
-            if translation:
-                # Save translation
-                save_translation(article_id, target_lang, translation)
-                translated_count += 1
-                logging.info(f"Translation completed for {article_id} to {target_lang}")
-            else:
-                # Update status to "failed"
-                ref.update({
-                    'status': 'failed',
-                    'failed_at': datetime.now().isoformat()
-                })
-                logging.error(f"Translation failed for {article_id} to {target_lang}")
-            
-            # Pause between articles
-            time.sleep(2)
+        success_count = 0
+        failure_count = 0
         
-        # 6. Update health status
-        health_ref = db.reference('health/translate_articles')
-        health_ref.set({
-            'last_run': datetime.now().isoformat(),
-            'articles_translated': translated_count,
-            'pending_translations': len(all_to_translate) - translated_count,
-            'status': 'success'
-        })
-        
-    except Exception as e:
-        logging.error(f"General error: {str(e)}")
-        
-        # Update health status with error
-        try:
-            health_ref = db.reference('health/translate_articles')
-            health_ref.set({
-                'last_run': datetime.now().isoformat(),
-                'status': 'error',
-                'error_message': str(e)
-            })
-        except:
-            pass
+        for article in articles_to_process:
+            # Process up to 3 languages per article
+            languages_to_process = article.get('missing_languages', [])[:3]
             
-        return 1
+            for lang in languages_to_process:
+                try:
+                    # Skip English (original)
+                    if lang == 'en':
+                        continue
+                        
+                    # Translate article
+                    translation = translate_article(article, lang)
+                    
+                    if translation:
+                        success_count += 1
+                    else:
+                        failure_count += 1
+                        
+                    # Add a small delay to avoid rate limits
+                    time.sleep(random.uniform(1, 3))
+                except Exception as e:
+                    logger.error(f"Error processing language {lang} for article {article['id']}: {str(e)}")
+                    failure_count += 1
+        
+        # Update component status
+        if failure_count == 0:
+            update_component_status('success', f"Translated {success_count} articles/languages")
+        elif success_count > 0:
+            update_component_status('warning', f"Completed {success_count} translations with {failure_count} failures")
+        else:
+            update_component_status('error', f"All {failure_count} translations failed")
+        
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        logger.info(f"Translation process completed in {duration} seconds. Success: {success_count}, Failures: {failure_count}")
+        
+        if failure_count > 0 and success_count == 0:
+            return 1
+        return 0
     
-    end_time = datetime.now()
-    duration = (end_time - start_time).total_seconds()
-    logging.info(f"Translation Service completed in {duration} seconds")
-    return 0
+    except Exception as e:
+        logger.error(f"Error in translation process: {str(e)}")
+        update_component_status('error', str(e))
+        return 1
 
 if __name__ == "__main__":
     sys.exit(main())

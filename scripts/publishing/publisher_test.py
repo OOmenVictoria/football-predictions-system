@@ -17,7 +17,7 @@ def main():
     print(f"FIREBASE_CREDENTIALS: {'✓ presente (primi 10 caratteri): ' + os.getenv('FIREBASE_CREDENTIALS')[:10] + '...' if os.getenv('FIREBASE_CREDENTIALS') else '✗ mancante'}")
     print(f"WP_USER: {'✓ presente' if os.getenv('WP_USER') else '✗ mancante'}")
     print(f"WP_APP_PASSWORD: {'✓ presente' if os.getenv('WP_APP_PASSWORD') else '✗ mancante'}")
-    print(f"WP_API_URL: {'✓ presente' if os.getenv('WP_API_URL') else '✗ mancante'}")
+    print(f"WP_URL: {'✓ presente' if os.getenv('WP_API_URL') else '✗ mancante'}")
     
     # Prova a inizializzare Firebase
     print("\nInitializing Firebase...")
