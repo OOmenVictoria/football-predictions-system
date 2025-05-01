@@ -1,0 +1,73 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environment
+venv/
+env/
+ENV/
+.env
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Cache
+cache/*
+!cache/.gitkeep
+
+# Backups
+backups/*
+!backups/.gitkeep
+
+# Reports
+reports/*
+!reports/.gitkeep
+
+# Firebase
+firebase_credentials.json
+
+# Generated content
+sample_article.md
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Other
+*.log
+*.sqlite
+*.db
+*.csv
+*.xlsx
+*.json
+!package.json
+temp/
