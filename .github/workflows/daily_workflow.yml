@@ -1,0 +1,110 @@
+name: Daily Processing Workflow
+
+on:
+  schedule:
+    # Run at 00:00, 06:00, 12:00, and 18:00 UTC every day
+    - cron: '0 0,6,12,18 * * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      run_all_steps:
+        description: 'Run all workflow steps'
+        required: false
+        default: 'true'
+      run_collection:
+        description: 'Run only data collection'
+        required: false
+        default: 'false'
+      run_generation:
+        description: 'Run only content generation'
+        required: false
+        default: 'false'
+      run_publishing:
+        description: 'Run only article publishing'
+        required: false
+        default: 'false'
+
+jobs:
+  process_data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Setup Firebase credentials
+        run: |
+          echo "${{ secrets.FIREBASE_CREDENTIALS }}" > firebase_credentials.json
+        
+      - name: Collect match data
+        if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_collection == 'true' || github.event_name == 'schedule' }}
+        run: |
+          python -m scripts.daily_coordinator --collect-data
+        env:
+          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+      
+      - name: Generate content
+        if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_generation == 'true' || github.event_name == 'schedule' }}
+        run: |
+          python -m scripts.daily_coordinator --generate-content
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+      
+      - name: Publish articles
+        if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_publishing == 'true' || github.event_name == 'schedule' }}
+        run: |
+          python -m scripts.daily_coordinator --publish-articles
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+      
+      - name: Update system health
+        run: |
+          python -m scripts.daily_coordinator --update-health
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+  
+  cleanup_expired_articles:
+    runs-on: ubuntu-latest
+    needs: process_data
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Setup Firebase credentials
+        run: |
+          echo "${{ secrets.FIREBASE_CREDENTIALS }}" > firebase_credentials.json
+      
+      - name: Clean up expired articles
+        run: |
+          python -m scripts.daily_coordinator --cleanup-expired
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
