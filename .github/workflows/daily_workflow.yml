@@ -45,32 +45,203 @@ jobs:
         run: |
           mkdir -p /home/runner/football-predictions/creds/
           mkdir -p data/cache
+          mkdir -p logs
+      
+      - name: Setup environment variables
+        run: |
+          echo "FIREBASE_DB_URL=${{ secrets.FIREBASE_DB_URL }}" >> $GITHUB_ENV
+          echo "FOOTBALL_API_KEY=${{ secrets.FOOTBALL_API_KEY }}" >> $GITHUB_ENV
+          echo "WP_URL=${{ secrets.WP_URL }}" >> $GITHUB_ENV
+          echo "WP_USER=${{ secrets.WP_USER }}" >> $GITHUB_ENV
+          echo "WP_APP_PASSWORD=${{ secrets.WP_APP_PASSWORD }}" >> $GITHUB_ENV
       
       - name: Setup Firebase credentials
         run: |
-          # Salva le credenziali in un file temporaneo per debug
-          echo '${{ secrets.FIREBASE_CREDENTIALS }}' > /tmp/firebase_credentials_raw.json
+          # Crea un file temporaneo con le credenziali
+          echo '${{ secrets.FIREBASE_CREDENTIALS }}' > firebase_credentials.json
           
-          # Verifica che il JSON sia valido
-          cat /tmp/firebase_credentials_raw.json | python -c "import sys, json; json.load(sys.stdin)" || echo "Invalid JSON format in FIREBASE_CREDENTIALS"
+          # Verifica che il JSON sia valido e mostra un messaggio di errore se non lo è
+          echo "Verifica validità JSON delle credenziali Firebase..."
+          if python -c "import json; json.load(open('firebase_credentials.json'))"; then
+            echo "✓ JSON valido"
+          else
+            echo "✗ ERRORE: JSON non valido in FIREBASE_CREDENTIALS"
+            cat firebase_credentials.json | head -n 20
+            exit 1
+          fi
           
-          # Copia le credenziali nella posizione corretta
-          cp /tmp/firebase_credentials_raw.json /home/runner/football-predictions/creds/firebase-credentials.json
+          # Copia in diverse posizioni per massimizzare la compatibilità
+          cp firebase_credentials.json /home/runner/football-predictions/creds/firebase-credentials.json
+          cp firebase_credentials.json firebase-credentials.json
           
-          # Imposta la variabile d'ambiente
+          # Imposta le variabili d'ambiente
           echo "FIREBASE_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
       
-      - name: Verify file content and permissions
+      - name: Initialize Firebase app
         run: |
-          echo "Checking if credential file exists and is readable"
-          ls -la /home/runner/football-predictions/creds/
-          cat /home/runner/football-predictions/creds/firebase-credentials.json | head -n 10
-        
+          echo "Creazione di uno script Python per inizializzare Firebase..."
+          cat > init_firebase.py << 'EOF'
+          #!/usr/bin/env python3
+          import os
+          import json
+          import firebase_admin
+          from firebase_admin import credentials, db
+
+          def initialize_firebase():
+              try:
+                  # Verifica se l'app è già inizializzata
+                  default_app = firebase_admin.get_app()
+                  print(f"✓ Firebase già inizializzato: {default_app.name}")
+                  return True
+              except ValueError:
+                  try:
+                      # Percorsi possibili per le credenziali
+                      possible_paths = [
+                          os.environ.get('FIREBASE_CREDENTIALS'),
+                          'firebase_credentials.json',
+                          'firebase-credentials.json',
+                          '/home/runner/football-predictions/creds/firebase-credentials.json'
+                      ]
+                      
+                      # Trova il primo file di credenziali valido
+                      cred_path = None
+                      for path in possible_paths:
+                          if path and os.path.exists(path):
+                              cred_path = path
+                              print(f"✓ Trovato file credenziali: {path}")
+                              break
+                      
+                      if not cred_path:
+                          print("✗ ERRORE: Nessun file di credenziali Firebase trovato")
+                          return False
+                      
+                      # Inizializza con nome app esplicito
+                      cred = credentials.Certificate(cred_path)
+                      firebase_admin.initialize_app(
+                          cred,
+                          {
+                              'databaseURL': os.environ.get('FIREBASE_DB_URL')
+                          },
+                          name="football-predictions"
+                      )
+                      print(f"✓ Firebase inizializzato con successo")
+                      
+                      # Test di connessione
+                      ref = db.reference('/')
+                      ref.get()
+                      print(f"✓ Connessione al database Firebase riuscita")
+                      
+                      return True
+                  except Exception as e:
+                      print(f"✗ ERRORE durante l'inizializzazione di Firebase: {str(e)}")
+                      return False
+
+          if __name__ == "__main__":
+              initialize_firebase()
+          EOF
+          
+          # Esegui lo script di inizializzazione
+          python init_firebase.py
+      
       - name: Collect match data
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_collection == 'true' || github.event_name == 'schedule' }}
         run: |
+          echo "Esecuzione della raccolta dati partite..."
           python -m scripts.daily_coordinator --collect-data
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+      
+      - name: Generate content
+        if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_generation == 'true' || github.event_name == 'schedule' }}
+        run: |
+          echo "Generazione contenuti pronostici..."
+          python -m scripts.daily_coordinator --generate-content
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+      
+      - name: Publish articles
+        if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_publishing == 'true' || github.event_name == 'schedule' }}
+        run: |
+          echo "Pubblicazione articoli su WordPress..."
+          python -m scripts.daily_coordinator --publish-articles
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+      
+      - name: Update system health
+        run: |
+          echo "Aggiornamento stato sistema..."
+          python -m scripts.daily_coordinator --update-health
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+      
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: processing-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7
+
+  cleanup_expired_articles:
+    runs-on: ubuntu-latest
+    needs: process_data
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create necessary directories
+        run: |
+          mkdir -p /home/runner/football-predictions/creds/
+          mkdir -p logs
+      
+      - name: Setup Firebase credentials
+        run: |
+          # Copia le credenziali
+          echo '${{ secrets.FIREBASE_CREDENTIALS }}' > /home/runner/football-predictions/creds/firebase-credentials.json
+          echo "FIREBASE_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
+          echo "FIREBASE_DB_URL=${{ secrets.FIREBASE_DB_URL }}" >> $GITHUB_ENV
+      
+      - name: Clean up expired articles
+        run: |
+          echo "Pulizia articoli scaduti..."
+          python -m scripts.daily_coordinator --cleanup-expired
+        env:
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+      
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: cleanup-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7
