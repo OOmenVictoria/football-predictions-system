@@ -189,7 +189,7 @@ jobs:
       
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: processing-logs-${{ github.run_id }}
           path: logs/
@@ -240,7 +240,7 @@ jobs:
       
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cleanup-logs-${{ github.run_id }}
           path: logs/
