@@ -31,6 +31,73 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 OPR/78.0.4093.184"
 ]
 
+# Aggiungiamo la funzione make_request che è richiesta da altri moduli
+def make_request(
+    url: str,
+    method: str = "GET",
+    params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    data: Optional[Any] = None,
+    json: Optional[Dict[str, Any]] = None,
+    timeout: int = 30,
+    retries: int = 3,
+    backoff_factor: float = 0.3,
+    status_forcelist: List[int] = [500, 502, 503, 504],
+) -> Optional[requests.Response]:
+    """
+    Make HTTP request with retry capability.
+    
+    Args:
+        url: URL to request
+        method: HTTP method (GET, POST, etc.)
+        params: URL parameters
+        headers: HTTP headers
+        data: Request body data
+        json: JSON data for request body
+        timeout: Request timeout in seconds
+        retries: Number of retries for failed requests
+        backoff_factor: Backoff factor for retries
+        status_forcelist: List of status codes to retry
+        
+    Returns:
+        Response object or None if failed
+    """
+    try:
+        # Create session with retry
+        session = create_session(max_retries=retries, backoff_factor=backoff_factor, status_forcelist=status_forcelist)
+        
+        # Default headers
+        default_headers = {
+            "User-Agent": random.choice(USER_AGENTS)
+        }
+        
+        # Merge headers
+        if headers:
+            default_headers.update(headers)
+        
+        # Make request
+        response = session.request(
+            method=method,
+            url=url,
+            params=params,
+            headers=default_headers,
+            data=data,
+            json=json,
+            timeout=timeout
+        )
+        
+        # Log request info
+        logger.debug(f"Request: {method} {url} - Status: {response.status_code}")
+        
+        return response
+    
+    except requests.RequestException as e:
+        logger.error(f"Request error: {str(e)} - URL: {url}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error during request: {str(e)} - URL: {url}")
+        return None
+
 class HTTPCache:
     """
     Cache per le richieste HTTP per ridurre le chiamate ripetute.
