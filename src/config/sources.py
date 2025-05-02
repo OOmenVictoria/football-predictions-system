@@ -346,6 +346,41 @@ SOURCES = {
     }
 }
 
+# Mappa dei nomi alle fonti per facilitare la ricerca per nome
+SOURCE_NAME_MAP = {
+    # Nomi ufficiali
+    "Football-Data.org API": "football_data_api",
+    "API-Football": "rapidapi_football",
+    "FBref": "fbref",
+    "Understat": "understat",
+    "SofaScore": "sofascore",
+    "OpenFootball": "open_football",
+    "Soccerway": "soccerway",
+    "FootyStats": "footystats",
+    "WorldFootball.net": "worldfootball",
+    "Transfermarkt": "transfermarkt",
+    "Kaggle Football Datasets": "kaggle_datasets",
+    "RSSSF": "rsssf",
+    "StatsBomb Open Data": "statsbomb",
+    "11v11": "eleven_v_eleven",
+    "Wikipedia": "wikipedia",
+    
+    # Nomi alternativi
+    "Football-Data": "football_data_api",
+    "Football Data": "football_data_api",
+    "API Football": "rapidapi_football",
+    "RapidAPI Football": "rapidapi_football",
+    "Sofa Score": "sofascore",
+    "Open Football": "open_football",
+    "Footy Stats": "footystats",
+    "World Football": "worldfootball",
+    "Transfer Markt": "transfermarkt",
+    "Kaggle": "kaggle_datasets",
+    "StatsBomb": "statsbomb",
+    "Eleven v Eleven": "eleven_v_eleven",
+    "Wiki": "wikipedia"
+}
+
 # Configurazione per ciascun tipo di dato
 DATA_TYPE_CONFIG = {
     "matches": {
@@ -488,6 +523,43 @@ def get_source(source_id: str) -> Optional[Dict[str, Any]]:
     # Restituisci la fonte richiesta se esiste
     return all_sources.get(source_id)
 
+# Funzione per ottenere una fonte dati tramite nome
+def get_source_by_name(name: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene informazioni su una fonte dati dal nome.
+    
+    Args:
+        name: Nome della fonte (ufficiale o alternativo)
+        
+    Returns:
+        Dizionario con informazioni sulla fonte o None se non trovata
+    """
+    # Normalizzazione del nome (rimuove spazi extra e converte in lowercase)
+    name = name.strip().lower()
+    
+    # Verifica diretta nel dizionario dei nomi
+    for source_name, source_key in SOURCE_NAME_MAP.items():
+        if name == source_name.lower():
+            return get_source(source_key)
+    
+    # Prova corrispondenze parziali
+    for source_name, source_key in SOURCE_NAME_MAP.items():
+        if name in source_name.lower() or source_name.lower() in name:
+            return get_source(source_key)
+    
+    # Cerca nei dati delle fonti
+    active_sources = get_active_sources()
+    for source_key, source_data in active_sources.items():
+        source_name = source_data.get("name", "").lower()
+        
+        if (name in source_name or source_name in name or 
+            name in source_key.lower()):
+            return source_data
+    
+    # Nessuna corrispondenza trovata
+    logger.warning(f"Fonte non trovata con nome: {name}")
+    return None
+
 # Funzione per ottenere fonti dati ordinate per priorità
 def get_sources_by_priority() -> List[Dict[str, Any]]:
     """
@@ -598,4 +670,4 @@ try:
     # Tentativo di inizializzazione delle fonti dati
     initialize_sources()
 except Exception as e:
-    logger.warning(f"Errore durante l'inizializzazione delle fonti dati: {e}")
+    logger.warning(f"Impossibile inizializzare le fonti dati su Firebase: {e}")
