@@ -357,3 +357,7 @@ def get_date_range(date_str: str, range_type: str = "week") -> Tuple[datetime, d
         end = start + timedelta(days=1) - timedelta(seconds=1)
     
     return start, end
+
+def get_current_datetime(tz: str = "Europe/Rome") -> datetime:
+    """Alias per compatibilità con codice esistente"""
+    return get_datetime_now(tz)
