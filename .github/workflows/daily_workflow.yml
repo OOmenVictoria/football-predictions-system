@@ -23,6 +23,7 @@ on:
         description: 'Run only article publishing'
         required: false
         default: 'false'
+
 jobs:
   process_data:
     runs-on: ubuntu-latest
@@ -60,7 +61,7 @@ jobs:
           # Crea un file temporaneo con le credenziali
           echo '${{ secrets.FIREBASE_CREDENTIALS }}' > firebase_credentials.json
           
-          # Verifica che il JSON sia valido e mostra un messaggio di errore se non lo è
+          # Verifica che il JSON sia valido
           echo "Verifica validità JSON delle credenziali Firebase..."
           if python -c "import json; json.load(open('firebase_credentials.json'))"; then
             echo "✓ JSON valido"
@@ -70,7 +71,7 @@ jobs:
             exit 1
           fi
           
-          # Copia in diverse posizioni per massimizzare la compatibilità
+          # Copia in diverse posizioni per compatibilità
           cp firebase_credentials.json /home/runner/football-predictions/creds/firebase-credentials.json
           cp firebase_credentials.json firebase-credentials.json
           
@@ -84,65 +85,65 @@ jobs:
           cat > init_firebase.py << 'EOF'
           #!/usr/bin/env python3
           import os
-          import json
           import firebase_admin
           from firebase_admin import credentials, db
 
           def initialize_firebase():
               try:
                   # Verifica se l'app è già inizializzata
-                  default_app = firebase_admin.get_app()
-                  print(f"✓ Firebase già inizializzato: {default_app.name}")
-                  return True
-              except ValueError:
-                  try:
-                      # Percorsi possibili per le credenziali
-                      possible_paths = [
-                          os.environ.get('FIREBASE_CREDENTIALS'),
-                          'firebase_credentials.json',
-                          'firebase-credentials.json',
-                          '/home/runner/football-predictions/creds/firebase-credentials.json'
-                      ]
-                      
-                      # Trova il primo file di credenziali valido
-                      cred_path = None
-                      for path in possible_paths:
-                          if path and os.path.exists(path):
-                              cred_path = path
-                              print(f"✓ Trovato file credenziali: {path}")
-                              break
-                      
-                      if not cred_path:
-                          print("✗ ERRORE: Nessun file di credenziali Firebase trovato")
-                          return False
-                      
-                      # Inizializza con nome app esplicito
-                      cred = credentials.Certificate(cred_path)
-                      firebase_admin.initialize_app(
-                          cred,
-                          {
-                              'databaseURL': os.environ.get('FIREBASE_DB_URL')
-                          },
-                          name="football-predictions"
-                      )
-                      print(f"✓ Firebase inizializzato con successo")
-                      
-                      # Test di connessione
-                      ref = db.reference('/')
-                      ref.get()
-                      print(f"✓ Connessione al database Firebase riuscita")
-                      
+                  if len(firebase_admin._apps) > 0:
+                      print("✓ Firebase già inizializzato")
                       return True
-                  except Exception as e:
-                      print(f"✗ ERRORE durante l'inizializzazione di Firebase: {str(e)}")
+                      
+                  # Percorsi possibili per le credenziali
+                  cred_path = None
+                  for path in [
+                      os.environ.get('FIREBASE_CREDENTIALS'),
+                      'firebase_credentials.json',
+                      '/home/runner/football-predictions/creds/firebase-credentials.json'
+                  ]:
+                      if path and os.path.exists(path):
+                          cred_path = path
+                          break
+                  
+                  if not cred_path:
+                      print("✗ ERRORE: Nessun file di credenziali Firebase trovato")
                       return False
+                  
+                  # Inizializza Firebase
+                  cred = credentials.Certificate(cred_path)
+                  firebase_admin.initialize_app(
+                      cred,
+                      {'databaseURL': os.environ.get('FIREBASE_DB_URL')}
+                  )
+                  print("✓ Firebase inizializzato con successo")
+                  
+                  # Test di connessione
+                  db.reference('/').get()
+                  print("✓ Connessione al database riuscita")
+                  return True
+              except Exception as e:
+                  print(f"✗ ERRORE durante l'inizializzazione: {str(e)}")
+                  return False
 
           if __name__ == "__main__":
               initialize_firebase()
           EOF
           
-          # Esegui lo script di inizializzazione
           python init_firebase.py
+      
+      - name: Fix time_utils imports
+        run: |
+          # Aggiungi get_current_datetime a time_utils.py se mancante
+          if ! grep -q "def get_current_datetime" src/utils/time_utils.py; then
+            echo "Aggiungendo get_current_datetime a time_utils.py..."
+            cat >> src/utils/time_utils.py << 'EOF'
+
+def get_current_datetime(tz: str = "Europe/Rome") -> datetime:
+    """Alias per compatibilità con codice esistente"""
+    return get_datetime_now(tz)
+EOF
+          fi
       
       - name: Collect match data
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_collection == 'true' || github.event_name == 'schedule' }}
@@ -220,7 +221,6 @@ jobs:
       
       - name: Setup Firebase credentials
         run: |
-          # Copia le credenziali
           echo '${{ secrets.FIREBASE_CREDENTIALS }}' > /home/runner/football-predictions/creds/firebase-credentials.json
           echo "FIREBASE_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
           echo "GOOGLE_APPLICATION_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
