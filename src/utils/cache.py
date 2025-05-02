@@ -661,3 +661,73 @@ def cached(ttl: int = 3600, namespace: str = "default", key_fn: Optional[Callabl
             return result
         return wrapper
     return decorator
+
+# Aggiungiamo la funzione clear_cache a livello di modulo
+def clear_cache(namespace: Optional[str] = None, cache_dir: Optional[str] = None) -> bool:
+    """
+    Pulisce la cache.
+    
+    Args:
+        namespace: Nome specifico della cache da pulire, se None pulisce tutte le cache
+        cache_dir: Directory per la cache, se None usa la directory predefinita
+        
+    Returns:
+        True se pulito con successo, False altrimenti
+    """
+    try:
+        # Set default cache directory
+        if not cache_dir:
+            cache_dir = os.path.expanduser("~/football-predictions/cache")
+            
+        if not os.path.exists(cache_dir):
+            logger.warning(f"Directory cache non trovata: {cache_dir}")
+            return True
+            
+        success = False
+        
+        if namespace:
+            # Pulisce solo una cache specifica
+            cache = MultiLevelCache(namespace, cache_dir=cache_dir)
+            success = cache.clear()
+            logger.info(f"Cache '{namespace}' pulita con successo: {success}")
+        else:
+            # Pulisce tutte le cache
+            
+            # 1. Pulisci cache in memoria
+            memory_cache = MemoryCache()
+            memory_success = memory_cache.clear()
+            
+            # 2. Pulisci cache su disco
+            disk_success = False
+            try:
+                # Rimuovi tutti i file .db nella directory cache
+                for file in os.listdir(cache_dir):
+                    if file.endswith(".db"):
+                        file_path = os.path.join(cache_dir, file)
+                        os.remove(file_path)
+                        logger.debug(f"Rimosso file cache: {file_path}")
+                disk_success = True
+            except Exception as e:
+                logger.error(f"Errore durante la pulizia della cache su disco: {str(e)}")
+            
+            # 3. Pulisci cache Firebase
+            firebase_success = False
+            if FIREBASE_AVAILABLE:
+                try:
+                    # Inizializza Firebase
+                    firebase_cache = FirebaseCache()
+                    if firebase_cache.available:
+                        # Rimuovi il nodo cache
+                        ref = db.reference('cache')
+                        ref.delete()
+                        firebase_success = True
+                except Exception as e:
+                    logger.error(f"Errore durante la pulizia della cache Firebase: {str(e)}")
+            
+            success = memory_success or disk_success or firebase_success
+            logger.info(f"Tutte le cache pulite con successo: {success}")
+            
+        return success
+    except Exception as e:
+        logger.error(f"Errore durante la pulizia della cache: {str(e)}")
+        return False
