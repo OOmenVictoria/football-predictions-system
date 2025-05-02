@@ -117,10 +117,9 @@ jobs:
       
       - name: Fix missing utils
         run: |
-          # Aggiungi slugify a text_utils.py
-          if ! grep -q "def slugify" src/utils/text_utils.py; then
+          # Aggiungi slugify se mancante
+          if [ ! -f src/utils/text_utils.py ] || ! grep -q "def slugify" src/utils/text_utils.py; then
             cat >> src/utils/text_utils.py << 'EOF'
-
 import re
 import unicodedata
 
@@ -138,25 +137,16 @@ def slugify(text: str, allow_unicode: bool = False) -> str:
 EOF
           fi
 
-          # Aggiungi get_current_datetime a time_utils.py
-          if ! grep -q "def get_current_datetime" src/utils/time_utils.py; then
+          # Verifica e aggiungi get_current_datetime
+          if [ ! -f src/utils/time_utils.py ] || ! grep -q "def get_current_datetime" src/utils/time_utils.py; then
             cat >> src/utils/time_utils.py << 'EOF'
+from datetime import datetime
 
 def get_current_datetime(tz: str = "Europe/Rome") -> datetime:
     """Compatibility function"""
     return get_datetime_now(tz)
 EOF
           fi
-
-          # Aggiorna __init__.py
-          if ! grep -q "slugify" src/utils/__init__.py; then
-            sed -i "/from \.text_utils import/s/)$/, slugify)/" src/utils/__init__.py
-          fi
-      
-      - name: Verify utils
-        run: |
-          python -c "from src.utils.text_utils import slugify; print('✓ slugify available')"
-          python -c "from src.utils.time_utils import get_current_datetime; print('✓ get_current_datetime available')"
       
       - name: Collect match data
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_collection == 'true' || github.event_name == 'schedule' }}
@@ -225,8 +215,7 @@ EOF
           echo "FIREBASE_DB_URL=${{ secrets.FIREBASE_DB_URL }}" >> $GITHUB_ENV
       
       - name: Clean up expired articles
-        run: |
-          python -m scripts.daily_coordinator --cleanup-expired
+        run: python -m scripts.daily_coordinator --cleanup-expired
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_CREDENTIALS: /home/runner/football-predictions/creds/firebase-credentials.json
