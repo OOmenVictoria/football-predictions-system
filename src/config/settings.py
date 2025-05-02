@@ -63,7 +63,7 @@ def initialize_firebase():
         cred = credentials.Certificate(FIREBASE_CREDENTIALS)
         firebase_admin.initialize_app(cred, {
             'databaseURL': FIREBASE_DATABASE_URL
-        })
+        }, name="football-predictions")  # Assegna un nome predefinito all'app
         
         _firebase_initialized = True
         
@@ -305,3 +305,89 @@ def get_all_settings() -> Dict[str, Any]:
         Dizionario con tutte le impostazioni
     """
     return settings.get_all()
+
+
+def reload_settings() -> Dict[str, Any]:
+    """
+    Ricarica le impostazioni forzatamente da Firebase e variabili d'ambiente.
+    
+    Returns:
+        Dizionario con tutte le impostazioni aggiornate
+    """
+    # Ricarica variabili d'ambiente
+    load_dotenv(override=True)
+    
+    # Forza aggiornamento della cache Firebase
+    settings._refresh_cache(force=True)
+    
+    # Ricarica le impostazioni globali
+    for key, value in os.environ.items():
+        if key.startswith('FOOTBALL_') and hasattr(globals(), key):
+            # Imposta il valore appropriato in base al tipo
+            if value.lower() in ('true', 'yes', '1'):
+                globals()[key] = True
+            elif value.lower() in ('false', 'no', '0'):
+                globals()[key] = False
+            elif value.isdigit():
+                globals()[key] = int(value)
+            elif value.replace('.', '', 1).isdigit():
+                globals()[key] = float(value)
+            else:
+                globals()[key] = value
+    
+    # Ricarica anche le configurazioni composte
+    _reload_composite_settings()
+    
+    # Restituisci tutte le impostazioni aggiornate
+    return get_all_settings()
+
+
+def _reload_composite_settings():
+    """Ricarica le configurazioni composte da variabili d'ambiente."""
+    global CACHE_TTL, SCRAPER_CONFIG, PUBLISHING_CONFIG, PREDICTION_CONFIG, MONITORING_CONFIG, TRANSLATION_CONFIG
+    
+    # Ricrea CACHE_TTL dalle variabili d'ambiente
+    for key in CACHE_TTL.keys():
+        env_key = f"{key.upper()}_CACHE_TTL"
+        if env_key in os.environ:
+            CACHE_TTL[key] = int(os.environ[env_key])
+    
+    # Ricrea SCRAPER_CONFIG dalle variabili d'ambiente
+    SCRAPER_CONFIG['request_timeout'] = int(os.getenv('REQUEST_TIMEOUT', SCRAPER_CONFIG['request_timeout']))
+    SCRAPER_CONFIG['max_retries'] = int(os.getenv('MAX_RETRIES', SCRAPER_CONFIG['max_retries']))
+    SCRAPER_CONFIG['retry_delay'] = int(os.getenv('RETRY_DELAY', SCRAPER_CONFIG['retry_delay']))
+    SCRAPER_CONFIG['respect_robots_txt'] = os.getenv('RESPECT_ROBOTS_TXT', str(SCRAPER_CONFIG['respect_robots_txt'])).lower() in ('true', '1', 't')
+    
+    for key in SCRAPER_CONFIG['rate_limit'].keys():
+        env_key = f"{key.upper()}_RATE_LIMIT"
+        if env_key in os.environ:
+            SCRAPER_CONFIG['rate_limit'][key] = float(os.environ[env_key])
+    
+    # Ricrea PUBLISHING_CONFIG dalle variabili d'ambiente
+    PUBLISHING_CONFIG['article_ttl'] = timedelta(hours=int(os.getenv('ARTICLE_TTL_HOURS', PUBLISHING_CONFIG['article_ttl'].total_seconds() // 3600)))
+    PUBLISHING_CONFIG['publish_before'] = timedelta(hours=int(os.getenv('PUBLISH_BEFORE_HOURS', PUBLISHING_CONFIG['publish_before'].total_seconds() // 3600)))
+    PUBLISHING_CONFIG['max_articles_per_day'] = int(os.getenv('MAX_ARTICLES_PER_DAY', PUBLISHING_CONFIG['max_articles_per_day']))
+    PUBLISHING_CONFIG['max_articles_per_hour'] = int(os.getenv('MAX_ARTICLES_PER_HOUR', PUBLISHING_CONFIG['max_articles_per_hour']))
+    PUBLISHING_CONFIG['batch_size'] = int(os.getenv('PUBLISH_BATCH_SIZE', PUBLISHING_CONFIG['batch_size']))
+    
+    # Ricrea PREDICTION_CONFIG dalle variabili d'ambiente
+    PREDICTION_CONFIG['min_matches_for_prediction'] = int(os.getenv('MIN_MATCHES_FOR_PREDICTION', PREDICTION_CONFIG['min_matches_for_prediction']))
+    PREDICTION_CONFIG['rating_weight'] = float(os.getenv('RATING_WEIGHT', PREDICTION_CONFIG['rating_weight']))
+    PREDICTION_CONFIG['form_weight'] = float(os.getenv('FORM_WEIGHT', PREDICTION_CONFIG['form_weight']))
+    PREDICTION_CONFIG['h2h_weight'] = float(os.getenv('H2H_WEIGHT', PREDICTION_CONFIG['h2h_weight']))
+    PREDICTION_CONFIG['odds_weight'] = float(os.getenv('ODDS_WEIGHT', PREDICTION_CONFIG['odds_weight']))
+    
+    # Ricrea MONITORING_CONFIG dalle variabili d'ambiente
+    MONITORING_CONFIG['health_check_interval'] = int(os.getenv('HEALTH_CHECK_INTERVAL', MONITORING_CONFIG['health_check_interval']))
+    MONITORING_CONFIG['backup_schedule']['daily'] = os.getenv('DAILY_BACKUP_TIME', MONITORING_CONFIG['backup_schedule']['daily'])
+    MONITORING_CONFIG['backup_schedule']['weekly'] = os.getenv('WEEKLY_BACKUP_DAY', MONITORING_CONFIG['backup_schedule']['weekly'])
+    MONITORING_CONFIG['backup_schedule']['monthly'] = os.getenv('MONTHLY_BACKUP_DAY', MONITORING_CONFIG['backup_schedule']['monthly'])
+    MONITORING_CONFIG['error_notification_threshold'] = int(os.getenv('ERROR_NOTIFICATION_THRESHOLD', MONITORING_CONFIG['error_notification_threshold']))
+    MONITORING_CONFIG['retain_logs_days'] = int(os.getenv('RETAIN_LOGS_DAYS', MONITORING_CONFIG['retain_logs_days']))
+    
+    # Ricrea TRANSLATION_CONFIG dalle variabili d'ambiente
+    TRANSLATION_CONFIG['default_source_language'] = os.getenv('DEFAULT_SOURCE_LANGUAGE', TRANSLATION_CONFIG['default_source_language'])
+    TRANSLATION_CONFIG['target_languages'] = os.getenv('TARGET_LANGUAGES', ','.join(TRANSLATION_CONFIG['target_languages'])).split(',')
+    TRANSLATION_CONFIG['service'] = os.getenv('TRANSLATION_SERVICE', TRANSLATION_CONFIG['service'])
+    TRANSLATION_CONFIG['libre_translate_url'] = os.getenv('LIBRE_TRANSLATE_URL', TRANSLATION_CONFIG['libre_translate_url'])
+    TRANSLATION_CONFIG['libre_translate_api_key'] = os.getenv('LIBRE_TRANSLATE_API_KEY', TRANSLATION_CONFIG['libre_translate_api_key'])
