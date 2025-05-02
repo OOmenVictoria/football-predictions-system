@@ -39,7 +39,7 @@ class FirebaseManager:
                 cls._instance._initialized = False
             return cls._instance
     
-    def __init__(self, app_name: str = None):
+    def __init__(self, app_name: str = "football-predictions"):
         """
         Inizializza il manager Firebase.
         
@@ -51,7 +51,7 @@ class FirebaseManager:
             return
             
         # Imposta attributi
-        self.app_name = app_name
+        self.app_name = app_name or "football-predictions"
         self.firebase_app = None
         self.available = FIREBASE_AVAILABLE
         
