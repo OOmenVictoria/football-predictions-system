@@ -1,10 +1,8 @@
 name: Daily Processing Workflow
 on:
   schedule:
-    # Run at 00:00, 06:00, 12:00, and 18:00 UTC every day
     - cron: '0 0,6,12,18 * * *'
   
-  # Allow manual trigger
   workflow_dispatch:
     inputs:
       run_all_steps:
@@ -58,44 +56,35 @@ jobs:
       
       - name: Setup Firebase credentials
         run: |
-          # Crea un file temporaneo con le credenziali
           echo '${{ secrets.FIREBASE_CREDENTIALS }}' > firebase_credentials.json
           
-          # Verifica che il JSON sia valido
-          echo "Verifica validità JSON delle credenziali Firebase..."
           if python -c "import json; json.load(open('firebase_credentials.json'))"; then
-            echo "✓ JSON valido"
+            echo "✓ JSON valid"
           else
-            echo "✗ ERRORE: JSON non valido in FIREBASE_CREDENTIALS"
-            cat firebase_credentials.json | head -n 20
+            echo "✗ Invalid JSON in FIREBASE_CREDENTIALS"
+            head -n 20 firebase_credentials.json
             exit 1
           fi
           
-          # Copia in diverse posizioni per compatibilità
           cp firebase_credentials.json /home/runner/football-predictions/creds/firebase-credentials.json
           cp firebase_credentials.json firebase-credentials.json
           
-          # Imposta le variabili d'ambiente
           echo "FIREBASE_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
           echo "GOOGLE_APPLICATION_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
       
       - name: Initialize Firebase app
         run: |
-          echo "Creazione di uno script Python per inizializzare Firebase..."
           cat > init_firebase.py << 'EOF'
-          #!/usr/bin/env python3
           import os
           import firebase_admin
           from firebase_admin import credentials, db
 
           def initialize_firebase():
               try:
-                  # Verifica se l'app è già inizializzata
                   if len(firebase_admin._apps) > 0:
-                      print("✓ Firebase già inizializzato")
+                      print("✓ Firebase already initialized")
                       return True
                       
-                  # Percorsi possibili per le credenziali
                   cred_path = None
                   for path in [
                       os.environ.get('FIREBASE_CREDENTIALS'),
@@ -107,23 +96,20 @@ jobs:
                           break
                   
                   if not cred_path:
-                      print("✗ ERRORE: Nessun file di credenziali Firebase trovato")
+                      print("✗ No Firebase credentials found")
                       return False
                   
-                  # Inizializza Firebase
                   cred = credentials.Certificate(cred_path)
                   firebase_admin.initialize_app(
                       cred,
                       {'databaseURL': os.environ.get('FIREBASE_DB_URL')}
                   )
-                  print("✓ Firebase inizializzato con successo")
-                  
-                  # Test di connessione
+                  print("✓ Firebase initialized")
                   db.reference('/').get()
-                  print("✓ Connessione al database riuscita")
+                  print("✓ Database connection successful")
                   return True
               except Exception as e:
-                  print(f"✗ ERRORE durante l'inizializzazione: {str(e)}")
+                  print(f"✗ Initialization error: {str(e)}")
                   return False
 
           if __name__ == "__main__":
@@ -134,13 +120,11 @@ jobs:
       
       - name: Fix time_utils imports
         run: |
-          # Aggiungi get_current_datetime a time_utils.py se mancante
           if ! grep -q "def get_current_datetime" src/utils/time_utils.py; then
-            echo "Aggiungendo get_current_datetime a time_utils.py..."
             cat >> src/utils/time_utils.py << 'EOF'
 
 def get_current_datetime(tz: str = "Europe/Rome") -> datetime:
-    """Alias per compatibilità con codice esistente"""
+    """Compatibility alias for existing code"""
     return get_datetime_now(tz)
 EOF
           fi
@@ -148,7 +132,6 @@ EOF
       - name: Collect match data
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_collection == 'true' || github.event_name == 'schedule' }}
         run: |
-          echo "Esecuzione della raccolta dati partite..."
           python -m scripts.daily_coordinator --collect-data
         env:
           FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
@@ -159,7 +142,6 @@ EOF
       - name: Generate content
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_generation == 'true' || github.event_name == 'schedule' }}
         run: |
-          echo "Generazione contenuti pronostici..."
           python -m scripts.daily_coordinator --generate-content
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
@@ -169,7 +151,6 @@ EOF
       - name: Publish articles
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_publishing == 'true' || github.event_name == 'schedule' }}
         run: |
-          echo "Pubblicazione articoli su WordPress..."
           python -m scripts.daily_coordinator --publish-articles
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
@@ -181,7 +162,6 @@ EOF
       
       - name: Update system health
         run: |
-          echo "Aggiornamento stato sistema..."
           python -m scripts.daily_coordinator --update-health
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
@@ -228,7 +208,6 @@ EOF
       
       - name: Clean up expired articles
         run: |
-          echo "Pulizia articoli scaduti..."
           python -m scripts.daily_coordinator --cleanup-expired
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
