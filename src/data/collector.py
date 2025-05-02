@@ -1,4 +1,5 @@
-""" Coordinatore centrale per la raccolta dati.
+"""
+Coordinatore centrale per la raccolta dati.
 Gestisce l'acquisizione di dati da diverse fonti (API, scraper, open data),
 coordinando le richieste, gestendo le priorità e implementando strategie
 di fallback quando necessario.
@@ -146,226 +147,6 @@ class DataCollector:
                             logger.info(f"Ottenute {len(matches)} partite da football_data_api")
                             break  # Usciamo se abbiamo ottenuto dati validi
                 except Exception as e:
-                    error_msg = f"Errore nell'aggiornamento statistiche per squadra {team_id}: {str(e)}"
-                    logger.error(error_msg)
-                    results['errors'].append(error_msg)
-            
-            results['teams']['count'] = success_count
-            results['teams']['success'] = success_count > 0
-        
-        # Raccogli pronostici per partite future
-        if results['matches']['success']:
-            # Filtra solo partite future
-            now = get_current_datetime()
-            future_matches = [m for m in matches if m.get('datetime') and datetime.fromisoformat(m['datetime']) > now]
-            
-            # Ottieni pronostici per ogni partita
-            success_count = 0
-            for match in future_matches:
-                try:
-                    match_id = match['id']
-                    prediction_data = self.collect_match_predictions(match_id)
-                    if prediction_data:
-                        # Salva dati pronostici in Firebase
-                        prediction_ref = self.db.get_reference(f"data/predictions/{match_id}")
-                        prediction_ref.set(prediction_data)
-                        success_count += 1
-                except Exception as e:
-                    error_msg = f"Errore nella generazione pronostici per partita {match.get('id')}: {str(e)}"
-                    logger.error(error_msg)
-                    results['errors'].append(error_msg)
-            
-            results['predictions']['count'] = success_count
-            results['predictions']['success'] = success_count > 0
-        
-        # Aggiorna timestamp di ultimo aggiornamento completo
-        self.db.get_reference(f"data/leagues/{league_id}/last_full_update").set(datetime.now().isoformat())
-        
-        # Registra risultati
-        self.db.get_reference(f"logs/data_collection/{league_id}").push(results)
-        
-        logger.info(f"Aggiornamento completato per {league_id}: {results['matches']['count']} partite, " + 
-                    f"{results['teams']['count']} squadre, {results['predictions']['count']} pronostici, " +
-                    f"{len(results['errors'])} errori")
-        
-        return results
-    
-    def refresh_all_leagues(self, active_only: bool = True) -> Dict[str, Any]:
-        """
-        Aggiorna i dati per tutti i campionati.
-        
-        Args:
-            active_only: Se aggiornare solo i campionati attivi
-            
-        Returns:
-            Dizionario con risultati per ogni campionato
-        """
-        logger.info(f"Avvio aggiornamento completo per {'campionati attivi' if active_only else 'tutti i campionati'}")
-        
-        # Ottieni campionati
-        leagues = get_active_leagues() if active_only else get_league(None)
-        
-        results = {
-            'timestamp': datetime.now().isoformat(),
-            'leagues_count': len(leagues),
-            'leagues_processed': 0,
-            'leagues_success': 0,
-            'total_matches': 0,
-            'total_teams': 0,
-            'total_predictions': 0,
-            'errors': []
-        }
-        
-        # Aggiorna ogni campionato
-        for league_id, league_data in leagues.items():
-            try:
-                league_result = self.refresh_league_data(league_id)
-                
-                # Aggiorna contatori
-                results['leagues_processed'] += 1
-                if not league_result.get('errors'):
-                    results['leagues_success'] += 1
-                
-                results['total_matches'] += league_result.get('matches', {}).get('count', 0)
-                results['total_teams'] += league_result.get('teams', {}).get('count', 0)
-                results['total_predictions'] += league_result.get('predictions', {}).get('count', 0)
-                
-                # Aggiungi eventuali errori
-                for error in league_result.get('errors', []):
-                    results['errors'].append(f"[{league_id}] {error}")
-            except Exception as e:
-                error_msg = f"Errore nell'aggiornamento campionato {league_id}: {str(e)}"
-                logger.error(error_msg)
-                results['errors'].append(error_msg)
-        
-        # Aggiorna timestamp di ultimo aggiornamento completo
-        self.db.get_reference("data/last_full_update").set(datetime.now().isoformat())
-        
-        # Registra risultati
-        self.db.get_reference("logs/data_collection/full_updates").push(results)
-        
-        logger.info(f"Aggiornamento completo: {results['leagues_success']}/{results['leagues_count']} campionati, " +
-                   f"{results['total_matches']} partite, {results['total_teams']} squadre, " +
-                   f"{results['total_predictions']} pronostici, {len(results['errors'])} errori")
-        
-        return results
-    
-    def collect_data_for_match(self, match_id: str) -> Dict[str, Any]:
-        """
-        Raccoglie tutti i dati necessari per una specifica partita.
-        Utile per aggiornare i dati prima di generare un articolo.
-        
-        Args:
-            match_id: ID della partita
-            
-        Returns:
-            Dizionario con tutti i dati relativi alla partita
-        """
-        logger.info(f"Raccolta dati completi per partita {match_id}")
-        
-        # Ottieni dati base partita
-        match_data = self.db.get_reference(f"data/matches/{match_id}").get()
-        if not match_data:
-            logger.error(f"Dati partita non trovati: {match_id}")
-            return {}
-        
-        # Ottieni ID squadre
-        home_team_id = match_data.get('home_team', {}).get('id')
-        away_team_id = match_data.get('away_team', {}).get('id')
-        
-        if not home_team_id or not away_team_id:
-            logger.error(f"ID squadre mancanti per partita {match_id}")
-            return {}
-        
-        # Raccogli statistiche squadre aggiornate
-        home_team_stats = self.collect_team_stats(home_team_id)
-        away_team_stats = self.collect_team_stats(away_team_id)
-        
-        # Raccogli scontri diretti
-        h2h_data = self.collect_head_to_head(home_team_id, away_team_id)
-        
-        # Raccogli classifica campionato
-        league_id = match_data.get('competition', {}).get('id')
-        standings = {}
-        if league_id:
-            standings = self.collect_league_standings(league_id)
-        
-        # Raccogli quote se disponibili
-        odds_data = {}
-        try:
-            odds_data = self.api_football.get_odds(match_id)
-        except Exception as e:
-            logger.warning(f"Impossibile ottenere quote per partita {match_id}: {e}")
-        
-        # Combina tutti i dati
-        complete_data = {
-            'match': match_data,
-            'home_team': home_team_stats,
-            'away_team': away_team_stats,
-            'head_to_head': h2h_data,
-            'standings': standings,
-            'odds': odds_data,
-            'last_updated': datetime.now().isoformat()
-        }
-        
-        # Salva dati completi in Firebase
-        self.db.get_reference(f"data/match_data/{match_id}").set(complete_data)
-        
-        logger.info(f"Dati completi raccolti per partita {match_id}")
-        
-        return complete_data
-    
-    def get_error_report(self) -> List[Dict[str, Any]]:
-        """
-        Ottiene un report degli errori recenti nella raccolta dati.
-        
-        Returns:
-            Lista di errori con timestamp e dettagli
-        """
-        return self.errors
-
-
-# Funzioni di utility globali
-
-def collect_league_data(league_id: str) -> Dict[str, Any]:
-    """
-    Funzione di utility per raccogliere dati di un campionato.
-    
-    Args:
-        league_id: ID del campionato
-        
-    Returns:
-        Risultato dell'operazione
-    """
-    collector = DataCollector()
-    return collector.refresh_league_data(league_id)
-
-def collect_match_data(match_id: str) -> Dict[str, Any]:
-    """
-    Funzione di utility per raccogliere dati di una partita.
-    
-    Args:
-        match_id: ID della partita
-        
-    Returns:
-        Dati completi della partita
-    """
-    collector = DataCollector()
-    return collector.collect_data_for_match(match_id)
-
-def collect_all_leagues_data(active_only: bool = True) -> Dict[str, Any]:
-    """
-    Funzione di utility per raccogliere dati di tutti i campionati.
-    
-    Args:
-        active_only: Se raccogliere dati solo per campionati attivi
-        
-    Returns:
-        Risultato dell'operazione
-    """
-    collector = DataCollector()
-    return collector.refresh_all_leagues(active_only)
-
                     error_msg = f"Errore nel recupero partite da football_data_api: {str(e)}"
                     logger.warning(error_msg)
                     errors.append(error_msg)
@@ -889,3 +670,219 @@ def collect_all_leagues_data(active_only: bool = True) -> Dict[str, Any]:
                     error_msg = f"Errore nell'aggiornamento statistiche per squadra {team_id}: {str(e)}"
                     logger.error(error_msg)
                     results['errors'].append(error_msg)
+            
+            results['teams']['count'] = success_count
+            results['teams']['success'] = success_count > 0
+        
+        # Raccogli pronostici per partite future
+        if results['matches']['success']:
+            # Filtra solo partite future
+            now = get_current_datetime()
+            future_matches = [m for m in matches if m.get('datetime') and datetime.fromisoformat(m['datetime']) > now]
+            
+            # Ottieni pronostici per ogni partita
+            success_count = 0
+            for match in future_matches:
+                try:
+                    match_id = match['id']
+                    prediction_data = self.collect_match_predictions(match_id)
+                    if prediction_data:
+                        # Salva dati pronostici in Firebase
+                        prediction_ref = self.db.get_reference(f"data/predictions/{match_id}")
+                        prediction_ref.set(prediction_data)
+                        success_count += 1
+                except Exception as e:
+                    error_msg = f"Errore nella generazione pronostici per partita {match.get('id')}: {str(e)}"
+                    logger.error(error_msg)
+                    results['errors'].append(error_msg)
+            
+            results['predictions']['count'] = success_count
+            results['predictions']['success'] = success_count > 0
+        
+        # Aggiorna timestamp di ultimo aggiornamento completo
+        self.db.get_reference(f"data/leagues/{league_id}/last_full_update").set(datetime.now().isoformat())
+        
+        # Registra risultati
+        self.db.get_reference(f"logs/data_collection/{league_id}").push(results)
+        
+        logger.info(f"Aggiornamento completato per {league_id}: {results['matches']['count']} partite, " + 
+                    f"{results['teams']['count']} squadre, {results['predictions']['count']} pronostici, " +
+                    f"{len(results['errors'])} errori")
+        
+        return results
+    
+    def refresh_all_leagues(self, active_only: bool = True) -> Dict[str, Any]:
+        """
+        Aggiorna i dati per tutti i campionati.
+        
+        Args:
+            active_only: Se aggiornare solo i campionati attivi
+            
+        Returns:
+            Dizionario con risultati per ogni campionato
+        """
+        logger.info(f"Avvio aggiornamento completo per {'campionati attivi' if active_only else 'tutti i campionati'}")
+        
+        # Ottieni campionati
+        leagues = get_active_leagues() if active_only else get_league(None)
+        
+        results = {
+            'timestamp': datetime.now().isoformat(),
+            'leagues_count': len(leagues),
+            'leagues_processed': 0,
+            'leagues_success': 0,
+            'total_matches': 0,
+            'total_teams': 0,
+            'total_predictions': 0,
+            'errors': []
+        }
+        
+        # Aggiorna ogni campionato
+        for league_id, league_data in leagues.items():
+            try:
+                league_result = self.refresh_league_data(league_id)
+                
+                # Aggiorna contatori
+                results['leagues_processed'] += 1
+                if not league_result.get('errors'):
+                    results['leagues_success'] += 1
+                
+                results['total_matches'] += league_result.get('matches', {}).get('count', 0)
+                results['total_teams'] += league_result.get('teams', {}).get('count', 0)
+                results['total_predictions'] += league_result.get('predictions', {}).get('count', 0)
+                
+                # Aggiungi eventuali errori
+                for error in league_result.get('errors', []):
+                    results['errors'].append(f"[{league_id}] {error}")
+            except Exception as e:
+                error_msg = f"Errore nell'aggiornamento campionato {league_id}: {str(e)}"
+                logger.error(error_msg)
+                results['errors'].append(error_msg)
+        
+        # Aggiorna timestamp di ultimo aggiornamento completo
+        self.db.get_reference("data/last_full_update").set(datetime.now().isoformat())
+        
+        # Registra risultati
+        self.db.get_reference("logs/data_collection/full_updates").push(results)
+        
+        logger.info(f"Aggiornamento completo: {results['leagues_success']}/{results['leagues_count']} campionati, " +
+                   f"{results['total_matches']} partite, {results['total_teams']} squadre, " +
+                   f"{results['total_predictions']} pronostici, {len(results['errors'])} errori")
+        
+        return results
+    
+    def collect_data_for_match(self, match_id: str) -> Dict[str, Any]:
+        """
+        Raccoglie tutti i dati necessari per una specifica partita.
+        Utile per aggiornare i dati prima di generare un articolo.
+        
+        Args:
+            match_id: ID della partita
+            
+        Returns:
+            Dizionario con tutti i dati relativi alla partita
+        """
+        logger.info(f"Raccolta dati completi per partita {match_id}")
+        
+        # Ottieni dati base partita
+        match_data = self.db.get_reference(f"data/matches/{match_id}").get()
+        if not match_data:
+            logger.error(f"Dati partita non trovati: {match_id}")
+            return {}
+        
+        # Ottieni ID squadre
+        home_team_id = match_data.get('home_team', {}).get('id')
+        away_team_id = match_data.get('away_team', {}).get('id')
+        
+        if not home_team_id or not away_team_id:
+            logger.error(f"ID squadre mancanti per partita {match_id}")
+            return {}
+        
+        # Raccogli statistiche squadre aggiornate
+        home_team_stats = self.collect_team_stats(home_team_id)
+        away_team_stats = self.collect_team_stats(away_team_id)
+        
+        # Raccogli scontri diretti
+        h2h_data = self.collect_head_to_head(home_team_id, away_team_id)
+        
+        # Raccogli classifica campionato
+        league_id = match_data.get('competition', {}).get('id')
+        standings = {}
+        if league_id:
+            standings = self.collect_league_standings(league_id)
+        
+        # Raccogli quote se disponibili
+        odds_data = {}
+        try:
+            odds_data = self.api_football.get_odds(match_id)
+        except Exception as e:
+            logger.warning(f"Impossibile ottenere quote per partita {match_id}: {e}")
+        
+        # Combina tutti i dati
+        complete_data = {
+            'match': match_data,
+            'home_team': home_team_stats,
+            'away_team': away_team_stats,
+            'head_to_head': h2h_data,
+            'standings': standings,
+            'odds': odds_data,
+            'last_updated': datetime.now().isoformat()
+        }
+        
+        # Salva dati completi in Firebase
+        self.db.get_reference(f"data/match_data/{match_id}").set(complete_data)
+        
+        logger.info(f"Dati completi raccolti per partita {match_id}")
+        
+        return complete_data
+    
+    def get_error_report(self) -> List[Dict[str, Any]]:
+        """
+        Ottiene un report degli errori recenti nella raccolta dati.
+        
+        Returns:
+            Lista di errori con timestamp e dettagli
+        """
+        return self.errors
+
+
+# Funzioni di utility globali
+
+def collect_league_data(league_id: str) -> Dict[str, Any]:
+    """
+    Funzione di utility per raccogliere dati di un campionato.
+    
+    Args:
+        league_id: ID del campionato
+        
+    Returns:
+        Risultato dell'operazione
+    """
+    collector = DataCollector()
+    return collector.refresh_league_data(league_id)
+
+def collect_match_data(match_id: str) -> Dict[str, Any]:
+    """
+    Funzione di utility per raccogliere dati di una partita.
+    
+    Args:
+        match_id: ID della partita
+        
+    Returns:
+        Dati completi della partita
+    """
+    collector = DataCollector()
+    return collector.collect_data_for_match(match_id)
+
+def collect_all_leagues_data(active_only: bool = True) -> Dict[str, Any]:
+    """
+    Funzione di utility per raccogliere dati di tutti i campionati.
+    
+    Args:
+        active_only: Se raccogliere dati solo per campionati attivi
+        
+    Returns:
+        Risultato dell'operazione
+    """
+    collector = DataCollector()
+    return collector.refresh_all_leagues(active_only)
