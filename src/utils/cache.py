@@ -663,13 +663,14 @@ def cached(ttl: int = 3600, namespace: str = "default", key_fn: Optional[Callabl
     return decorator
 
 # Aggiungiamo la funzione clear_cache a livello di modulo
-def clear_cache(namespace: Optional[str] = None, cache_dir: Optional[str] = None) -> bool:
+def clear_cache(namespace: Optional[str] = None, cache_dir: Optional[str] = None, expired_only: bool = False) -> bool:
     """
     Pulisce la cache.
     
     Args:
         namespace: Nome specifico della cache da pulire, se None pulisce tutte le cache
         cache_dir: Directory per la cache, se None usa la directory predefinita
+        expired_only: Se True, rimuove solo le voci scadute
         
     Returns:
         True se pulito con successo, False altrimenti
@@ -685,48 +686,98 @@ def clear_cache(namespace: Optional[str] = None, cache_dir: Optional[str] = None
             
         success = False
         
-        if namespace:
-            # Pulisce solo una cache specifica
-            cache = MultiLevelCache(namespace, cache_dir=cache_dir)
-            success = cache.clear()
-            logger.info(f"Cache '{namespace}' pulita con successo: {success}")
-        else:
-            # Pulisce tutte le cache
+        if expired_only:
+            # Rimuovi solo le voci scadute
+            logger.info("Pulizia cache: rimozione solo voci scadute")
             
-            # 1. Pulisci cache in memoria
-            memory_cache = MemoryCache()
-            memory_success = memory_cache.clear()
-            
-            # 2. Pulisci cache su disco
-            disk_success = False
-            try:
-                # Rimuovi tutti i file .db nella directory cache
-                for file in os.listdir(cache_dir):
-                    if file.endswith(".db"):
-                        file_path = os.path.join(cache_dir, file)
-                        os.remove(file_path)
-                        logger.debug(f"Rimosso file cache: {file_path}")
-                disk_success = True
-            except Exception as e:
-                logger.error(f"Errore durante la pulizia della cache su disco: {str(e)}")
-            
-            # 3. Pulisci cache Firebase
-            firebase_success = False
-            if FIREBASE_AVAILABLE:
-                try:
-                    # Inizializza Firebase
-                    firebase_cache = FirebaseCache()
+            if namespace:
+                # Pulisci solo una cache specifica
+                disk_cache = DiskCache(namespace, cache_dir)
+                disk_cache._cleanup()  # Rimuove voci scadute
+                
+                # Firebase cache
+                if FIREBASE_AVAILABLE:
+                    firebase_cache = FirebaseCache(namespace)
                     if firebase_cache.available:
-                        # Rimuovi il nodo cache
-                        ref = db.reference('cache')
-                        ref.delete()
-                        firebase_success = True
+                        firebase_cache._cleanup()
+                
+                logger.info(f"Voci scadute della cache '{namespace}' rimosse con successo")
+            else:
+                # Pulisci tutte le cache su disco
+                try:
+                    # Trova tutti i file .db nella directory cache
+                    for file in os.listdir(cache_dir):
+                        if file.endswith(".db"):
+                            namespace = file[:-3]  # Rimuovi estensione .db
+                            disk_cache = DiskCache(namespace, cache_dir)
+                            disk_cache._cleanup()
                 except Exception as e:
-                    logger.error(f"Errore durante la pulizia della cache Firebase: {str(e)}")
+                    logger.error(f"Errore durante la pulizia delle cache scadute su disco: {str(e)}")
+                
+                # Pulisci cache scadute su Firebase
+                if FIREBASE_AVAILABLE:
+                    try:
+                        # Pulisci tutte le cache Firebase
+                        firebase_cache = FirebaseCache()
+                        if firebase_cache.available:
+                            # Ottieni tutte le sottodirectory di cache
+                            ref = db.reference('cache')
+                            namespaces = ref.get()
+                            
+                            if namespaces:
+                                for ns in namespaces:
+                                    firebase_cache = FirebaseCache(ns)
+                                    firebase_cache._cleanup()
+                    except Exception as e:
+                        logger.error(f"Errore durante la pulizia delle cache scadute su Firebase: {str(e)}")
+                
+                logger.info("Voci scadute di tutte le cache rimosse con successo")
             
-            success = memory_success or disk_success or firebase_success
-            logger.info(f"Tutte le cache pulite con successo: {success}")
-            
+            success = True
+        else:
+            # Rimuovi tutte le voci
+            if namespace:
+                # Pulisce solo una cache specifica
+                cache = MultiLevelCache(namespace, cache_dir=cache_dir)
+                success = cache.clear()
+                logger.info(f"Cache '{namespace}' pulita con successo: {success}")
+            else:
+                # Pulisce tutte le cache
+                
+                # 1. Pulisci cache in memoria
+                memory_cache = MemoryCache()
+                memory_success = memory_cache.clear()
+                
+                # 2. Pulisci cache su disco
+                disk_success = False
+                try:
+                    # Rimuovi tutti i file .db nella directory cache
+                    for file in os.listdir(cache_dir):
+                        if file.endswith(".db"):
+                            file_path = os.path.join(cache_dir, file)
+                            os.remove(file_path)
+                            logger.debug(f"Rimosso file cache: {file_path}")
+                    disk_success = True
+                except Exception as e:
+                    logger.error(f"Errore durante la pulizia della cache su disco: {str(e)}")
+                
+                # 3. Pulisci cache Firebase
+                firebase_success = False
+                if FIREBASE_AVAILABLE:
+                    try:
+                        # Inizializza Firebase
+                        firebase_cache = FirebaseCache()
+                        if firebase_cache.available:
+                            # Rimuovi il nodo cache
+                            ref = db.reference('cache')
+                            ref.delete()
+                            firebase_success = True
+                    except Exception as e:
+                        logger.error(f"Errore durante la pulizia della cache Firebase: {str(e)}")
+                
+                success = memory_success or disk_success or firebase_success
+                logger.info(f"Tutte le cache pulite con successo: {success}")
+        
         return success
     except Exception as e:
         logger.error(f"Errore durante la pulizia della cache: {str(e)}")
