@@ -1,559 +1,359 @@
 """
-Utilità per la gestione del tempo e delle date.
-Fornisce funzioni per convertire, formattare e manipolare date e orari.
+Modulo con utilità per la gestione del tempo e delle date.
+Fornisce funzioni per formattare, convertire e manipolare date e timestamp.
 """
+import os
 import time
 import logging
 import pytz
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Union, Dict, List, Tuple
+from typing import Dict, Any, Optional, Union, List, Tuple
+from datetime import datetime, timedelta, date, timezone
 
 # Configurazione logging
 logger = logging.getLogger(__name__)
 
-# Timezone di default
-DEFAULT_TIMEZONE = pytz.timezone('Europe/Rome')  # UTC+1/UTC+2 (ora legale)
-
-def get_current_time(tz: Optional[pytz.timezone] = None) -> datetime:
+def format_date(dt: Optional[Union[datetime, date, str]] = None, 
+                format_str: str = "%Y-%m-%d", 
+                locale: str = "it") -> str:
     """
-    Ottiene l'ora corrente nella timezone specificata.
+    Formatta una data nel formato specificato.
     
     Args:
-        tz: Timezone, default UTC
-        
-    Returns:
-        Datetime corrente
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
-    return datetime.now(tz)
-
-def get_current_timestamp() -> int:
-    """
-    Ottiene il timestamp unix corrente in secondi.
-    
-    Returns:
-        Timestamp unix in secondi
-    """
-    return int(time.time())
-
-def timestamp_to_datetime(timestamp: Union[int, float], 
-                          tz: Optional[pytz.timezone] = None) -> datetime:
-    """
-    Converte un timestamp unix in oggetto datetime.
-    
-    Args:
-        timestamp: Timestamp unix in secondi
-        tz: Timezone, default UTC
-        
-    Returns:
-        Oggetto datetime
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
-    return datetime.fromtimestamp(timestamp, tz)
-
-def datetime_to_timestamp(dt: datetime) -> int:
-    """
-    Converte un oggetto datetime in timestamp unix.
-    
-    Args:
-        dt: Oggetto datetime
-        
-    Returns:
-        Timestamp unix in secondi
-    """
-    # Ensure the datetime is timezone-aware
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=pytz.UTC)
-        
-    return int(dt.timestamp())
-
-def format_datetime(dt: datetime, 
-                    format_str: str = "%Y-%m-%d %H:%M:%S",
-                    tz: Optional[pytz.timezone] = None) -> str:
-    """
-    Formatta un oggetto datetime in stringa.
-    
-    Args:
-        dt: Oggetto datetime
-        format_str: Formato di output
-        tz: Timezone, se None usa quella dell'oggetto datetime
+        dt: Oggetto datetime, date o stringa ISO. Se None, usa oggi
+        format_str: Formato stringa per l'output (default: YYYY-MM-DD)
+        locale: Locale per la formattazione (default: italiano)
         
     Returns:
         Stringa formattata
     """
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=pytz.UTC)
-        
-    if tz is not None:
-        dt = dt.astimezone(tz)
-        
-    return dt.strftime(format_str)
-
-def parse_datetime(date_str: str, 
-                   format_str: str = "%Y-%m-%d %H:%M:%S",
-                   tz: Optional[pytz.timezone] = None) -> Optional[datetime]:
-    """
-    Converte una stringa in oggetto datetime.
+    if dt is None:
+        dt = datetime.now()
     
-    Args:
-        date_str: Stringa data/ora
-        format_str: Formato di input
-        tz: Timezone, default UTC
-        
-    Returns:
-        Oggetto datetime o None se errore
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
+    # Se è una stringa, converti in datetime
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except ValueError:
+            try:
+                dt = datetime.strptime(dt, "%Y-%m-%d")
+            except ValueError:
+                logger.error(f"Formato data non supportato: {dt}")
+                return str(dt)
+    
+    # Formattazione standard
     try:
-        dt = datetime.strptime(date_str, format_str)
-        return tz.localize(dt) if dt.tzinfo is None else dt.astimezone(tz)
+        if locale.lower() == "it":
+            # Formati personalizzati per italiano
+            if format_str == "%B":  # Nome mese
+                months_it = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+                           "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+                return months_it[dt.month - 1]
+            
+            if format_str == "%A":  # Nome giorno
+                days_it = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", 
+                          "Venerdì", "Sabato", "Domenica"]
+                return days_it[dt.weekday()]
+                
+            if format_str == "%d %B %Y":  # 01 Gennaio 2025
+                months_it = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+                           "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+                return f"{dt.day:02d} {months_it[dt.month - 1]} {dt.year}"
+                
+            if format_str == "%A %d %B %Y":  # Lunedì 01 Gennaio 2025
+                days_it = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", 
+                          "Venerdì", "Sabato", "Domenica"]
+                months_it = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+                           "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+                return f"{days_it[dt.weekday()]} {dt.day:02d} {months_it[dt.month - 1]} {dt.year}"
+        
+        # Formattazione standard per tutti gli altri casi
+        return dt.strftime(format_str)
     except Exception as e:
-        logger.warning(f"Errore parsing datetime '{date_str}': {str(e)}")
+        logger.error(f"Errore formattazione data: {str(e)}")
+        return str(dt)
+
+def parse_date(date_str: str, formats: List[str] = None) -> Optional[datetime]:
+    """
+    Converte una stringa in un oggetto datetime.
+    
+    Args:
+        date_str: Stringa data da convertire
+        formats: Lista di formati da provare, se None usa formati predefiniti
+        
+    Returns:
+        Oggetto datetime o None se la conversione fallisce
+    """
+    if not date_str:
         return None
+        
+    if formats is None:
+        formats = [
+            "%Y-%m-%d",            # 2024-05-01
+            "%Y-%m-%dT%H:%M:%S",   # 2024-05-01T15:30:00
+            "%Y-%m-%dT%H:%M:%SZ",  # 2024-05-01T15:30:00Z
+            "%Y-%m-%d %H:%M:%S",   # 2024-05-01 15:30:00
+            "%d/%m/%Y",            # 01/05/2024
+            "%d/%m/%Y %H:%M",      # 01/05/2024 15:30
+            "%d/%m/%Y %H:%M:%S",   # 01/05/2024 15:30:00
+            "%d-%m-%Y",            # 01-05-2024
+            "%d-%m-%Y %H:%M",      # 01-05-2024 15:30
+            "%d-%m-%Y %H:%M:%S",   # 01-05-2024 15:30:00
+            "%d %B %Y",            # 01 Maggio 2024
+            "%A %d %B %Y"          # Mercoledì 01 Maggio 2024
+        ]
+    
+    # Prova con formato ISO (gestisce automaticamente timezone)
+    try:
+        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+    except ValueError:
+        pass
+    
+    # Prova con tutti gli altri formati
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    
+    logger.warning(f"Impossibile interpretare formato data: {date_str}")
+    return None
 
-def get_datetime_range(start_days: int = 0, 
-                       end_days: int = 0,
-                       tz: Optional[pytz.timezone] = None) -> Tuple[datetime, datetime]:
+def get_time_until(target_date: Union[datetime, str], short: bool = False, locale: str = "it") -> str:
     """
-    Ottiene un intervallo di date relativamente a oggi.
+    Calcola e formatta il tempo rimanente fino a una data target.
     
     Args:
-        start_days: Giorni indietro (negativo) o avanti (positivo) dalla data odierna
-        end_days: Giorni indietro (negativo) o avanti (positivo) dalla data odierna
-        tz: Timezone, default UTC
+        target_date: Data target come datetime o stringa ISO
+        short: Se usare formato breve (es. "2g 5h" invece di "2 giorni e 5 ore")
+        locale: Locale per la formattazione (default: italiano)
         
     Returns:
-        Tupla (data inizio, data fine)
+        Stringa con tempo rimanente formattato
     """
-    if tz is None:
-        tz = pytz.UTC
+    # Converti stringa in datetime se necessario
+    if isinstance(target_date, str):
+        target_date = parse_date(target_date)
         
-    now = get_current_time(tz)
-    start_date = (now + timedelta(days=start_days)).replace(
-        hour=0, minute=0, second=0, microsecond=0)
-    end_date = (now + timedelta(days=end_days)).replace(
-        hour=23, minute=59, second=59, microsecond=999999)
-        
-    return start_date, end_date
-
-def get_date_range_str(start_days: int = 0, 
-                       end_days: int = 0,
-                       format_str: str = "%Y-%m-%d",
-                       tz: Optional[pytz.timezone] = None) -> Tuple[str, str]:
-    """
-    Ottiene un intervallo di date come stringhe.
+    if not target_date:
+        return "data non valida"
     
-    Args:
-        start_days: Giorni indietro (negativo) o avanti (positivo) dalla data odierna
-        end_days: Giorni indietro (negativo) o avanti (positivo) dalla data odierna
-        format_str: Formato di output
-        tz: Timezone, default UTC
-        
-    Returns:
-        Tupla (stringa data inizio, stringa data fine)
-    """
-    start_date, end_date = get_datetime_range(start_days, end_days, tz)
-    return format_datetime(start_date, format_str), format_datetime(end_date, format_str)
-
-def get_start_of_day(dt: Optional[datetime] = None, 
-                     tz: Optional[pytz.timezone] = None) -> datetime:
-    """
-    Ottiene l'inizio del giorno (00:00:00).
+    # Assicura che il datetime abbia timezone
+    if target_date.tzinfo is None:
+        target_date = target_date.replace(tzinfo=timezone.utc)
     
-    Args:
-        dt: Datetime di riferimento, default now
-        tz: Timezone, default UTC
-        
-    Returns:
-        Datetime inizio giorno
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
-    if dt is None:
-        dt = get_current_time(tz)
-    elif dt.tzinfo is None:
-        dt = tz.localize(dt)
-        
-    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
-
-def get_end_of_day(dt: Optional[datetime] = None, 
-                   tz: Optional[pytz.timezone] = None) -> datetime:
-    """
-    Ottiene la fine del giorno (23:59:59.999999).
+    # Ottieni datetime attuale
+    now = datetime.now(timezone.utc)
     
-    Args:
-        dt: Datetime di riferimento, default now
-        tz: Timezone, default UTC
-        
-    Returns:
-        Datetime fine giorno
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
-    if dt is None:
-        dt = get_current_time(tz)
-    elif dt.tzinfo is None:
-        dt = tz.localize(dt)
-        
-    return dt.replace(hour=23, minute=59, second=59, microsecond=999999)
-
-def get_start_of_week(dt: Optional[datetime] = None, 
-                      tz: Optional[pytz.timezone] = None,
-                      week_start: int = 0) -> datetime:
-    """
-    Ottiene l'inizio della settimana corrente.
+    # Calcola differenza
+    diff = target_date - now
     
-    Args:
-        dt: Datetime di riferimento, default now
-        tz: Timezone, default UTC
-        week_start: Giorno inizio settimana (0=lunedì, 6=domenica)
-        
-    Returns:
-        Datetime inizio settimana
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
-    if dt is None:
-        dt = get_current_time(tz)
-    elif dt.tzinfo is None:
-        dt = tz.localize(dt)
-        
-    start = dt - timedelta(days=dt.weekday() - week_start)
-    return get_start_of_day(start)
-
-def get_start_of_month(dt: Optional[datetime] = None, 
-                       tz: Optional[pytz.timezone] = None) -> datetime:
-    """
-    Ottiene l'inizio del mese corrente.
-    
-    Args:
-        dt: Datetime di riferimento, default now
-        tz: Timezone, default UTC
-        
-    Returns:
-        Datetime inizio mese
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
-    if dt is None:
-        dt = get_current_time(tz)
-    elif dt.tzinfo is None:
-        dt = tz.localize(dt)
-        
-    return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-def get_end_of_month(dt: Optional[datetime] = None, 
-                     tz: Optional[pytz.timezone] = None) -> datetime:
-    """
-    Ottiene la fine del mese corrente.
-    
-    Args:
-        dt: Datetime di riferimento, default now
-        tz: Timezone, default UTC
-        
-    Returns:
-        Datetime fine mese
-    """
-    if tz is None:
-        tz = pytz.UTC
-        
-    if dt is None:
-        dt = get_current_time(tz)
-    elif dt.tzinfo is None:
-        dt = tz.localize(dt)
-        
-    # Primo giorno del mese successivo meno un microsecondo
-    if dt.month == 12:
-        next_month = dt.replace(year=dt.year+1, month=1, day=1, 
-                                hour=0, minute=0, second=0, microsecond=0)
-    else:
-        next_month = dt.replace(month=dt.month+1, day=1,
-                                hour=0, minute=0, second=0, microsecond=0)
-        
-    return next_month - timedelta(microseconds=1)
-
-def time_since(dt: datetime, include_seconds: bool = False) -> str:
-    """
-    Restituisce una stringa che indica il tempo trascorso.
-    Esempio: "2 giorni fa", "3 ore fa", "5 minuti fa", "pochi secondi fa"
-    
-    Args:
-        dt: Datetime di riferimento
-        include_seconds: Se includere i secondi nel risultato
-        
-    Returns:
-        Stringa tempo trascorso
-    """
-    now = get_current_time(dt.tzinfo)
-    diff = now - dt
-    
-    seconds = diff.total_seconds()
-    
-    if seconds < 0:
-        return "nel futuro"
-        
-    intervals = [
-        ('anno', 'anni', 60*60*24*365),
-        ('mese', 'mesi', 60*60*24*30),
-        ('settimana', 'settimane', 60*60*24*7),
-        ('giorno', 'giorni', 60*60*24),
-        ('ora', 'ore', 60*60),
-        ('minuto', 'minuti', 60),
-    ]
-    
-    if include_seconds:
-        intervals.append(('secondo', 'secondi', 1))
-    
-    for singular, plural, count in intervals:
-        if seconds >= count:
-            n = int(seconds / count)
-            if n == 1:
-                return f"1 {singular} fa"
-            else:
-                return f"{n} {plural} fa"
-    
-    return "pochi secondi fa"
-
-def format_match_time(match_time: datetime, 
-                      match_date: Optional[datetime] = None,
-                      tz: Optional[pytz.timezone] = DEFAULT_TIMEZONE) -> str:
-    """
-    Formatta l'ora di una partita in modo appropriato.
-    Se la partita è oggi, mostra solo l'ora.
-    Se la partita è domani, mostra "Domani" seguito dall'ora.
-    Altrimenti mostra la data completa.
-    
-    Args:
-        match_time: Datetime della partita
-        match_date: Data di riferimento opzionale (default: oggi)
-        tz: Timezone, default Europe/Rome
-        
-    Returns:
-        Stringa formattata
-    """
-    if match_time.tzinfo is None:
-        match_time = pytz.UTC.localize(match_time)
-        
-    # Converti alla timezone desiderata
-    match_time = match_time.astimezone(tz)
-    
-    # Ottieni oggi e domani nella timezone desiderata
-    today = get_start_of_day(get_current_time(tz), tz)
-    tomorrow = today + timedelta(days=1)
-    
-    # Usa la data della partita per confrontare
-    match_date = get_start_of_day(match_time, tz)
-    
-    # Formatta in base alla data
-    if match_date.date() == today.date():
-        return f"Oggi, {match_time.strftime('%H:%M')}"
-    elif match_date.date() == tomorrow.date():
-        return f"Domani, {match_time.strftime('%H:%M')}"
-    else:
-        # Formato esteso per le altre date
-        return match_time.strftime("%A %d %B, %H:%M")
-
-def time_until_match(match_time: datetime, 
-                     short_format: bool = False) -> str:
-    """
-    Restituisce una stringa che indica il tempo mancante alla partita.
-    
-    Args:
-        match_time: Datetime della partita
-        short_format: Se usare un formato abbreviato
-        
-    Returns:
-        Stringa tempo mancante
-    """
-    if match_time.tzinfo is None:
-        match_time = pytz.UTC.localize(match_time)
-        
-    now = get_current_time(match_time.tzinfo)
-    diff = match_time - now
-    
+    # Se la data è nel passato
     if diff.total_seconds() < 0:
-        return "Partita iniziata" if not short_format else "Iniziata"
-        
+        if locale.lower() == "it":
+            return "passato" if short else "evento già passato"
+        else:
+            return "past" if short else "event already passed"
+    
+    # Calcola componenti
     days = diff.days
     hours, remainder = divmod(diff.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     
-    if short_format:
-        if days > 0:
-            return f"{days}g {hours}h"
-        elif hours > 0:
-            return f"{hours}h {minutes}m"
+    # Formatta risultato
+    if locale.lower() == "it":
+        if short:
+            result = []
+            if days > 0:
+                result.append(f"{days}g")
+            if hours > 0 or days > 0:
+                result.append(f"{hours}h")
+            if days == 0:  # Mostra minuti solo se meno di un giorno
+                result.append(f"{minutes}m")
+            return " ".join(result)
         else:
-            return f"{minutes}m"
+            if days > 0:
+                if hours > 0:
+                    return f"{days} {'giorno' if days == 1 else 'giorni'} e {hours} {'ora' if hours == 1 else 'ore'}"
+                return f"{days} {'giorno' if days == 1 else 'giorni'}"
+            if hours > 0:
+                if minutes > 0:
+                    return f"{hours} {'ora' if hours == 1 else 'ore'} e {minutes} {'minuto' if minutes == 1 else 'minuti'}"
+                return f"{hours} {'ora' if hours == 1 else 'ore'}"
+            if minutes > 0:
+                if seconds > 0:
+                    return f"{minutes} {'minuto' if minutes == 1 else 'minuti'} e {seconds} {'secondo' if seconds == 1 else 'secondi'}"
+                return f"{minutes} {'minuto' if minutes == 1 else 'minuti'}"
+            return f"{seconds} {'secondo' if seconds == 1 else 'secondi'}"
     else:
-        parts = []
-        if days > 0:
-            parts.append(f"{days} {'giorno' if days == 1 else 'giorni'}")
-        if hours > 0:
-            parts.append(f"{hours} {'ora' if hours == 1 else 'ore'}")
-        if minutes > 0:
-            parts.append(f"{minutes} {'minuto' if minutes == 1 else 'minuti'}")
-            
-        if not parts:
-            return "meno di un minuto"
-            
-        return ", ".join(parts)
+        # English format
+        if short:
+            result = []
+            if days > 0:
+                result.append(f"{days}d")
+            if hours > 0 or days > 0:
+                result.append(f"{hours}h")
+            if days == 0:  # Mostra minuti solo se meno di un giorno
+                result.append(f"{minutes}m")
+            return " ".join(result)
+        else:
+            if days > 0:
+                if hours > 0:
+                    return f"{days} day{'s' if days != 1 else ''} and {hours} hour{'s' if hours != 1 else ''}"
+                return f"{days} day{'s' if days != 1 else ''}"
+            if hours > 0:
+                if minutes > 0:
+                    return f"{hours} hour{'s' if hours != 1 else ''} and {minutes} minute{'s' if minutes != 1 else ''}"
+                return f"{hours} hour{'s' if hours != 1 else ''}"
+            if minutes > 0:
+                if seconds > 0:
+                    return f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} second{'s' if seconds != 1 else ''}"
+                return f"{minutes} minute{'s' if minutes != 1 else ''}"
+            return f"{seconds} second{'s' if seconds != 1 else ''}"
 
-def is_match_soon(match_time: datetime, hours_before: int = 12) -> bool:
+def get_datetime_now(tz: str = "Europe/Rome") -> datetime:
     """
-    Verifica se una partita inizierà entro un certo numero di ore.
+    Ottiene il datetime attuale con timezone.
     
     Args:
-        match_time: Datetime della partita
-        hours_before: Numero di ore prima
+        tz: Timezone (default: Europa/Roma)
         
     Returns:
-        True se la partita inizierà entro hours_before ore
+        Datetime attuale con timezone
     """
-    if match_time.tzinfo is None:
-        match_time = pytz.UTC.localize(match_time)
-        
-    now = get_current_time(match_time.tzinfo)
-    diff = match_time - now
-    
-    return 0 <= diff.total_seconds() <= hours_before * 3600
+    try:
+        timezone = pytz.timezone(tz)
+        return datetime.now(timezone)
+    except Exception as e:
+        logger.warning(f"Errore nell'ottenere datetime corrente: {str(e)}")
+        return datetime.now(timezone.utc)
 
-def get_match_status(match_time: datetime, 
-                     match_duration: int = 90,
-                     extra_time: int = 15) -> str:
+def timestamp_to_datetime(timestamp: Union[int, float]) -> datetime:
     """
-    Determina lo stato di una partita (non iniziata, in corso, terminata).
+    Converte un timestamp Unix in datetime.
     
     Args:
-        match_time: Datetime inizio partita
-        match_duration: Durata partita in minuti
-        extra_time: Extra time stimato in minuti
+        timestamp: Timestamp Unix (secondi da epoch)
         
     Returns:
-        Stato partita ('not_started', 'in_progress', 'finished')
+        Oggetto datetime
     """
-    if match_time.tzinfo is None:
-        match_time = pytz.UTC.localize(match_time)
-        
-    now = get_current_time(match_time.tzinfo)
-    
-    if now < match_time:
-        # La partita non è ancora iniziata
-        return 'not_started'
-        
-    # Calcola fine partita stimata (incluso recupero)
-    match_end = match_time + timedelta(minutes=match_duration + extra_time)
-    
-    if now > match_end:
-        # La partita è finita
-        return 'finished'
-        
-    # La partita è in corso
-    return 'in_progress'
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc)
 
-def format_duration(seconds: int) -> str:
+def datetime_to_timestamp(dt: datetime) -> int:
     """
-    Formatta una durata in secondi in formato leggibile.
+    Converte un datetime in timestamp Unix.
     
     Args:
-        seconds: Durata in secondi
+        dt: Oggetto datetime
         
     Returns:
-        Stringa formattata
+        Timestamp Unix (secondi da epoch)
     """
-    if seconds < 60:
-        return f"{seconds} secondi"
-        
-    minutes, seconds = divmod(seconds, 60)
-    if minutes < 60:
-        return f"{minutes} min, {seconds} sec"
-        
-    hours, minutes = divmod(minutes, 60)
-    if hours < 24:
-        return f"{hours} ore, {minutes} min"
-        
-    days, hours = divmod(hours, 24)
-    return f"{days} giorni, {hours} ore"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    
+    return int(dt.timestamp())
 
-def get_publication_window(match_time: datetime, 
-                           hours_before: int = 12,
-                           hours_after_end: int = 8) -> Tuple[datetime, datetime]:
+def format_timeago(dt: datetime, locale: str = "it") -> str:
     """
-    Calcola la finestra di pubblicazione per un articolo sulla partita.
+    Formatta una data in stile "time ago" (es. "2 ore fa").
     
     Args:
-        match_time: Datetime inizio partita
-        hours_before: Ore prima della partita per pubblicare
-        hours_after_end: Ore dopo fine partita per rimuovere
+        dt: Datetime da formattare
+        locale: Locale per la formattazione (default: italiano)
         
     Returns:
-        Tupla (datetime pubblicazione, datetime rimozione)
+        Stringa "time ago"
     """
-    if match_time.tzinfo is None:
-        match_time = pytz.UTC.localize(match_time)
+    now = datetime.now(timezone.utc)
     
-    # Orario di pubblicazione
-    publish_time = match_time - timedelta(hours=hours_before)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     
-    # Stima fine partita (90 minuti + 15 di recupero)
-    match_end = match_time + timedelta(minutes=90 + 15)
+    diff = now - dt
+    seconds = diff.total_seconds()
     
-    # Orario di rimozione
-    expire_time = match_end + timedelta(hours=hours_after_end)
-    
-    return publish_time, expire_time
+    if locale.lower() == "it":
+        if seconds < 60:
+            return "appena ora"
+        if seconds < 3600:
+            minutes = int(seconds / 60)
+            return f"{minutes} minut{'o' if minutes == 1 else 'i'} fa"
+        if seconds < 86400:
+            hours = int(seconds / 3600)
+            return f"{hours} {'ora' if hours == 1 else 'ore'} fa"
+        if seconds < 604800:
+            days = int(seconds / 86400)
+            return f"{days} {'giorno' if days == 1 else 'giorni'} fa"
+        if seconds < 2592000:
+            weeks = int(seconds / 604800)
+            return f"{weeks} {'settimana' if weeks == 1 else 'settimane'} fa"
+        if seconds < 31536000:
+            months = int(seconds / 2592000)
+            return f"{months} {'mese' if months == 1 else 'mesi'} fa"
+        
+        years = int(seconds / 31536000)
+        return f"{years} {'anno' if years == 1 else 'anni'} fa"
+    else:
+        # English fallback
+        if seconds < 60:
+            return "just now"
+        if seconds < 3600:
+            minutes = int(seconds / 60)
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        if seconds < 86400:
+            hours = int(seconds / 3600)
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        if seconds < 604800:
+            days = int(seconds / 86400)
+            return f"{days} day{'s' if days != 1 else ''} ago"
+        if seconds < 2592000:
+            weeks = int(seconds / 604800)
+            return f"{weeks} week{'s' if weeks != 1 else ''} ago"
+        if seconds < 31536000:
+            months = int(seconds / 2592000)
+            return f"{months} month{'s' if months != 1 else ''} ago"
+        
+        years = int(seconds / 31536000)
+        return f"{years} year{'s' if years != 1 else ''} ago"
 
-def should_publish_now(match_time: datetime,
-                       hours_before: int = 12) -> bool:
+def get_date_range(date_str: str, range_type: str = "week") -> Tuple[datetime, datetime]:
     """
-    Verifica se è il momento di pubblicare un articolo sulla partita.
+    Ottiene l'intervallo di date basato su una data.
     
     Args:
-        match_time: Datetime inizio partita
-        hours_before: Ore prima della partita per pubblicare
+        date_str: Data di riferimento (YYYY-MM-DD)
+        range_type: Tipo di intervallo ('day', 'week', 'month', 'year')
         
     Returns:
-        True se è il momento di pubblicare
+        Tupla con data inizio e fine
     """
-    if match_time.tzinfo is None:
-        match_time = pytz.UTC.localize(match_time)
-        
-    publish_time, _ = get_publication_window(match_time, hours_before)
-    now = get_current_time(match_time.tzinfo)
+    dt = parse_date(date_str)
     
-    # Verifica se siamo dopo il tempo di pubblicazione ma prima dell'inizio partita
-    return publish_time <= now < match_time
-
-def should_expire_now(match_time: datetime,
-                      hours_before: int = 12,
-                      hours_after_end: int = 8) -> bool:
-    """
-    Verifica se è il momento di rimuovere un articolo sulla partita.
+    if not dt:
+        dt = datetime.now()
     
-    Args:
-        match_time: Datetime inizio partita
-        hours_before: Ore prima della partita per pubblicare
-        hours_after_end: Ore dopo fine partita per rimuovere
-        
-    Returns:
-        True se è il momento di rimuovere
-    """
-    if match_time.tzinfo is None:
-        match_time = pytz.UTC.localize(match_time)
-        
-    _, expire_time = get_publication_window(
-        match_time, hours_before, hours_after_end)
-    now = get_current_time(match_time.tzinfo)
+    if range_type == "day":
+        start = datetime(dt.year, dt.month, dt.day, 0, 0, 0)
+        end = start + timedelta(days=1) - timedelta(seconds=1)
+    elif range_type == "week":
+        # Trova inizio settimana (lunedì)
+        start = datetime(dt.year, dt.month, dt.day, 0, 0, 0)
+        weekday = dt.weekday()
+        start = start - timedelta(days=weekday)
+        end = start + timedelta(days=7) - timedelta(seconds=1)
+    elif range_type == "month":
+        start = datetime(dt.year, dt.month, 1, 0, 0, 0)
+        if dt.month == 12:
+            end = datetime(dt.year + 1, 1, 1, 0, 0, 0) - timedelta(seconds=1)
+        else:
+            end = datetime(dt.year, dt.month + 1, 1, 0, 0, 0) - timedelta(seconds=1)
+    elif range_type == "year":
+        start = datetime(dt.year, 1, 1, 0, 0, 0)
+        end = datetime(dt.year + 1, 1, 1, 0, 0, 0) - timedelta(seconds=1)
+    else:
+        # Default: giorno
+        start = datetime(dt.year, dt.month, dt.day, 0, 0, 0)
+        end = start + timedelta(days=1) - timedelta(seconds=1)
     
-    # Verifica se siamo dopo il tempo di rimozione
-    return now >= expire_time
+    return start, end
