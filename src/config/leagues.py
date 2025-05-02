@@ -586,63 +586,63 @@ LEAGUES = {
             "soccerway": "https://uk.soccerway.com/international/world/world-cup/2026-north-central-america-and-caribbean/",
             "transfermarkt": "https://www.transfermarkt.com/wm-qualifikation-sudamerika/startseite/pokalwettbewerb/WCQS",
             "wikipedia": "https://en.wikipedia.org/wiki/FIFA_World_Cup_qualification_(CONMEBOL)"
-                    },
-                    "active": True,
-                    "priority": 36,
-                    "color": "#49BCE3"  # Colore simile al World Cup
-                 }
-                 # Aggiungi altri campionati secondo necessità
-            }
+        },
+        "active": True,
+        "priority": 36,
+        "color": "#49BCE3"  # Colore simile al World Cup
+    }
+    # Aggiungi altri campionati secondo necessità
+}
 
-            #Mappa dei nomi alle leghe per facilitare la ricerca per nome
-            LEAGUE_NAME_MAP = {
-                # Nomi ufficiali
-                "Premier League": "premier_league",
-                "Serie A": "serie_a",
-                "La Liga": "la_liga",
-                "Bundesliga": "bundesliga",
-                "Ligue 1": "ligue_1",
-                "UEFA Champions League": "champions_league",
-                "Champions League": "champions_league",
-                "UEFA Europa League": "europa_league",
-                "Europa League": "europa_league",
-                "Copa Libertadores": "copa_libertadores",
-                "Saudi Pro League": "saudi_pro_league",
-                "Serie B": "serie_b",
-                "La Liga 2": "la_liga_2",
-                "Ligue 2": "ligue_2",
-                "2. Bundesliga": "bundesliga_2",
-                "EFL Championship": "championship",
-                "Championship": "championship",
-                "Primeira Liga": "primeira_liga",
-                "Süper Lig": "super_lig",
-                "J1 League": "j1_league",
-                "Liga Profesional de Fútbol": "primera_division_argentina",
-                "Brasileirão": "brasileirao",
-                "FIFA World Cup": "world_cup",
-                "World Cup": "world_cup",
-            
-                # Nomi alternativi/non ufficiali
-                "EPL": "premier_league",
-                "English Premier League": "premier_league",
-                "Primera Division": "la_liga",
-                "LaLiga": "la_liga",
-                "LaLiga Santander": "la_liga",
-                "Serie A TIM": "serie_a",
-                "Ligue 1 Uber Eats": "ligue_1",
-                "Bundesliga 1": "bundesliga",
-                "UCL": "champions_league",
-                "UEL": "europa_league",
-                "Copa": "copa_libertadores",
-                "SPL": "saudi_pro_league",
-                "Segunda Division": "la_liga_2",
-                "Bundesliga 2": "bundesliga_2",
-                "Portuguese Liga": "primeira_liga",
-                "Super Lig": "super_lig",
-                "Argentina Primera Division": "primera_division_argentina",
-                "Brazil Serie A": "brasileirao",
-                "Brazilian Serie A": "brasileirao"
-            }
+# Mappa dei nomi alle leghe per facilitare la ricerca per nome
+LEAGUE_NAME_MAP = {
+    # Nomi ufficiali
+    "Premier League": "premier_league",
+    "Serie A": "serie_a",
+    "La Liga": "la_liga",
+    "Bundesliga": "bundesliga",
+    "Ligue 1": "ligue_1",
+    "UEFA Champions League": "champions_league",
+    "Champions League": "champions_league",
+    "UEFA Europa League": "europa_league",
+    "Europa League": "europa_league",
+    "Copa Libertadores": "copa_libertadores",
+    "Saudi Pro League": "saudi_pro_league",
+    "Serie B": "serie_b",
+    "La Liga 2": "la_liga_2",
+    "Ligue 2": "ligue_2",
+    "2. Bundesliga": "bundesliga_2",
+    "EFL Championship": "championship",
+    "Championship": "championship",
+    "Primeira Liga": "primeira_liga",
+    "Süper Lig": "super_lig",
+    "J1 League": "j1_league",
+    "Liga Profesional de Fútbol": "primera_division_argentina",
+    "Brasileirão": "brasileirao",
+    "FIFA World Cup": "world_cup",
+    "World Cup": "world_cup",
+    
+    # Nomi alternativi/non ufficiali
+    "EPL": "premier_league",
+    "English Premier League": "premier_league",
+    "Primera Division": "la_liga",
+    "LaLiga": "la_liga",
+    "LaLiga Santander": "la_liga",
+    "Serie A TIM": "serie_a",
+    "Ligue 1 Uber Eats": "ligue_1",
+    "Bundesliga 1": "bundesliga",
+    "UCL": "champions_league",
+    "UEL": "europa_league",
+    "Copa": "copa_libertadores",
+    "SPL": "saudi_pro_league",
+    "Segunda Division": "la_liga_2",
+    "Bundesliga 2": "bundesliga_2",
+    "Portuguese Liga": "primeira_liga",
+    "Super Lig": "super_lig",
+    "Argentina Primera Division": "primera_division_argentina",
+    "Brazil Serie A": "brasileirao",
+    "Brazilian Serie A": "brasileirao"
+}
 
 # Funzione per ottenere i dati dei campionati da Firebase
 def get_leagues_from_firebase() -> Dict[str, Any]:
