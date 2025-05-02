@@ -115,63 +115,46 @@ jobs:
           
           python init_firebase.py
       
-      - name: Fix missing utils
+      - name: Ensure utils files exist
         run: |
-          # Create text_utils.py if missing
-          if [ ! -f src/utils/text_utils.py ]; then
-            mkdir -p src/utils/
-            cat > src/utils/text_utils.py << 'EOF'
+          # Crea la directory utils se non esiste
+          mkdir -p src/utils/
+          
+          # Crea/aggiorna text_utils.py
+          cat > src/utils/text_utils.py << "EOT"
 import re
 import unicodedata
 
-def clean_text(text: str) -> str:
-    """Basic text cleaning"""
+def clean_text(text):
     return text.strip()
 
-def normalize_team_name(name: str) -> str:
-    """Normalize team names"""
+def normalize_team_name(name):
     return name.upper()
 
-def slugify(text: str, allow_unicode: bool = False) -> str:
-    """Convert text to URL-friendly slug"""
+def slugify(text, allow_unicode=False):
     if allow_unicode:
         text = unicodedata.normalize('NFKC', text)
     else:
         text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
     text = re.sub(r'[^\w\s-]', '', text.lower())
     return re.sub(r'[-\s]+', '-', text).strip('-_')
-EOF
-          elif ! grep -q "def slugify" src/utils/text_utils.py; then
-            cat >> src/utils/text_utils.py << 'EOF'
+EOT
 
-def slugify(text: str, allow_unicode: bool = False) -> str:
-    """Convert text to URL-friendly slug"""
-    if allow_unicode:
-        text = unicodedata.normalize('NFKC', text)
-    else:
-        text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
-    text = re.sub(r'[^\w\s-]', '', text.lower())
-    return re.sub(r'[-\s]+', '-', text).strip('-_')
-EOF
-          fi
-
-          # Ensure time_utils.py has get_current_datetime
-          if [ ! -f src/utils/time_utils.py ]; then
-            cat > src/utils/time_utils.py << 'EOF'
+          # Crea/aggiorna time_utils.py
+          cat > src/utils/time_utils.py << "EOT"
 from datetime import datetime
 
-def get_current_datetime(tz: str = "Europe/Rome") -> datetime:
-    """Compatibility function"""
+def get_datetime_now(tz="Europe/Rome"):
     return datetime.now()
-EOF
-          elif ! grep -q "def get_current_datetime" src/utils/time_utils.py; then
-            cat >> src/utils/time_utils.py << 'EOF'
 
-def get_current_datetime(tz: str = "Europe/Rome") -> datetime:
-    """Compatibility function"""
-    return datetime.now()
-EOF
-          fi
+def get_current_datetime(tz="Europe/Rome"):
+    return get_datetime_now(tz)
+EOT
+
+          # Verifica i file creati
+          ls -la src/utils/
+          cat src/utils/text_utils.py
+          cat src/utils/time_utils.py
       
       - name: Collect match data
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_collection == 'true' || github.event_name == 'schedule' }}
