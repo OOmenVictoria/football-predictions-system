@@ -586,7 +586,267 @@ LEAGUES = {
             "soccerway": "https://uk.soccerway.com/international/world/world-cup/2026-north-central-america-and-caribbean/",
             "transfermarkt": "https://www.transfermarkt.com/wm-qualifikation-sudamerika/startseite/pokalwettbewerb/WCQS",
             "wikipedia": "https://en.wikipedia.org/wiki/FIFA_World_Cup_qualification_(CONMEBOL)"
-        },
-        "active": True,
-        "priority": 36,
-        "color": "#49BCE3"  # Colore
+                    },
+                    "active": True,
+                    "priority": 36,
+                    "color": "#49BCE3"  # Colore simile al World Cup
+                 }
+                 # Aggiungi altri campionati secondo necessità
+            }
+
+            #Mappa dei nomi alle leghe per facilitare la ricerca per nome
+            LEAGUE_NAME_MAP = {
+                # Nomi ufficiali
+                "Premier League": "premier_league",
+                "Serie A": "serie_a",
+                "La Liga": "la_liga",
+                "Bundesliga": "bundesliga",
+                "Ligue 1": "ligue_1",
+                "UEFA Champions League": "champions_league",
+                "Champions League": "champions_league",
+                "UEFA Europa League": "europa_league",
+                "Europa League": "europa_league",
+                "Copa Libertadores": "copa_libertadores",
+                "Saudi Pro League": "saudi_pro_league",
+                "Serie B": "serie_b",
+                "La Liga 2": "la_liga_2",
+                "Ligue 2": "ligue_2",
+                "2. Bundesliga": "bundesliga_2",
+                "EFL Championship": "championship",
+                "Championship": "championship",
+                "Primeira Liga": "primeira_liga",
+                "Süper Lig": "super_lig",
+                "J1 League": "j1_league",
+                "Liga Profesional de Fútbol": "primera_division_argentina",
+                "Brasileirão": "brasileirao",
+                "FIFA World Cup": "world_cup",
+                "World Cup": "world_cup",
+            
+                # Nomi alternativi/non ufficiali
+                "EPL": "premier_league",
+                "English Premier League": "premier_league",
+                "Primera Division": "la_liga",
+                "LaLiga": "la_liga",
+                "LaLiga Santander": "la_liga",
+                "Serie A TIM": "serie_a",
+                "Ligue 1 Uber Eats": "ligue_1",
+                "Bundesliga 1": "bundesliga",
+                "UCL": "champions_league",
+                "UEL": "europa_league",
+                "Copa": "copa_libertadores",
+                "SPL": "saudi_pro_league",
+                "Segunda Division": "la_liga_2",
+                "Bundesliga 2": "bundesliga_2",
+                "Portuguese Liga": "primeira_liga",
+                "Super Lig": "super_lig",
+                "Argentina Primera Division": "primera_division_argentina",
+                "Brazil Serie A": "brasileirao",
+                "Brazilian Serie A": "brasileirao"
+            }
+
+# Funzione per ottenere i dati dei campionati da Firebase
+def get_leagues_from_firebase() -> Dict[str, Any]:
+    """
+    Ottiene i dati dei campionati da Firebase.
+    
+    Returns:
+        Dizionario con i dati dei campionati
+    """
+    try:
+        initialize_firebase()
+        leagues_ref = db.reference('config/leagues')
+        leagues_data = leagues_ref.get()
+        
+        if leagues_data:
+            return leagues_data
+        return {}
+    except Exception as e:
+        logger.warning(f"Impossibile ottenere i dati dei campionati da Firebase: {e}")
+        return {}
+
+# Funzione per salvare i dati dei campionati su Firebase
+def save_leagues_to_firebase(leagues_data: Dict[str, Any]) -> bool:
+    """
+    Salva i dati dei campionati su Firebase.
+    
+    Args:
+        leagues_data: Dizionario con i dati dei campionati
+        
+    Returns:
+        True se l'operazione è riuscita, False altrimenti
+    """
+    try:
+        initialize_firebase()
+        leagues_ref = db.reference('config/leagues')
+        leagues_ref.set(leagues_data)
+        logger.info("Dati dei campionati salvati su Firebase con successo")
+        return True
+    except Exception as e:
+        logger.error(f"Impossibile salvare i dati dei campionati su Firebase: {e}")
+        return False
+
+# Funzione per ottenere i campionati attivi
+def get_active_leagues() -> Dict[str, Dict[str, Any]]:
+    """
+    Ottiene i campionati attivi, combinando dati locali e Firebase.
+    
+    Returns:
+        Dizionario con i campionati attivi
+    """
+    # Ottieni dati da Firebase
+    firebase_leagues = get_leagues_from_firebase()
+    
+    # Combina con dati locali
+    combined_leagues = LEAGUES.copy()
+    
+    # Aggiorna con dati da Firebase
+    for league_id, league_data in firebase_leagues.items():
+        if league_id in combined_leagues:
+            # Aggiorna campi esistenti
+            combined_leagues[league_id].update(league_data)
+        else:
+            # Aggiungi nuovo campionato
+            combined_leagues[league_id] = league_data
+    
+    # Filtra per campionati attivi
+    active_leagues = {
+        league_id: league_data 
+        for league_id, league_data in combined_leagues.items() 
+        if league_data.get('active', True)
+    }
+    
+    return active_leagues
+
+# Funzione per ottenere un campionato specifico
+def get_league(league_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene i dati di un campionato specifico.
+    
+    Args:
+        league_id: ID del campionato
+        
+    Returns:
+        Dati del campionato o None se non trovato
+    """
+    # Ottieni tutti i campionati
+    all_leagues = get_active_leagues()
+    
+    # Restituisci il campionato richiesto se esiste
+    return all_leagues.get(league_id)
+
+# Funzione per ottenere un campionato tramite nome
+def get_league_by_name(name: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene informazioni su una lega dal nome.
+    
+    Args:
+        name: Nome della lega (ufficiale o alternativo)
+        
+    Returns:
+        Dizionario con informazioni sulla lega o None se non trovata
+    """
+    # Normalizzazione del nome (rimuove spazi extra e converte in lowercase)
+    name = name.strip().lower()
+    
+    # Verifica diretta nel dizionario dei nomi
+    for league_name, league_key in LEAGUE_NAME_MAP.items():
+        if name == league_name.lower():
+            return get_league(league_key)
+    
+    # Prova corrispondenze parziali
+    for league_name, league_key in LEAGUE_NAME_MAP.items():
+        if name in league_name.lower() or league_name.lower() in name:
+            return get_league(league_key)
+    
+    # Cerca nei dati delle leghe
+    active_leagues = get_active_leagues()
+    for league_key, league_data in active_leagues.items():
+        league_name = league_data.get("name", "").lower()
+        league_country = league_data.get("country", "").lower()
+        
+        if (name in league_name or league_name in name or 
+            name in league_key.lower() or
+            name in league_country):
+            return league_data
+    
+    # Nessuna corrispondenza trovata
+    logger.warning(f"Lega non trovata con nome: {name}")
+    return None
+
+# Funzione per ottenere campionati ordinati per priorità
+def get_leagues_by_priority() -> List[Dict[str, Any]]:
+    """
+    Ottiene i campionati ordinati per priorità.
+    
+    Returns:
+        Lista di campionati ordinati per priorità
+    """
+    active_leagues = get_active_leagues()
+    
+    # Converti in lista per ordinamento
+    leagues_list = [
+        {"id": league_id, **league_data}
+        for league_id, league_data in active_leagues.items()
+    ]
+    
+    # Ordina per priorità (più bassa prima)
+    leagues_list.sort(key=lambda x: x.get('priority', 999))
+    
+    return leagues_list
+
+# Funzione per ottenere il codice API per un campionato
+def get_api_code(league_id: str, api_name: str) -> Optional[str]:
+    """
+    Ottiene il codice API per un campionato specifico.
+    
+    Args:
+        league_id: ID del campionato
+        api_name: Nome dell'API (football_data, rapidapi_football, ecc.)
+        
+    Returns:
+        Codice API o None se non trovato
+    """
+    league_data = get_league(league_id)
+    
+    if not league_data:
+        return None
+    
+    api_codes = league_data.get('api_codes', {})
+    return api_codes.get(api_name)
+
+# Funzione per ottenere l'URL di una fonte per un campionato
+def get_league_url(league_id: str, source: str) -> Optional[str]:
+    """
+    Ottiene l'URL di una fonte per un campionato specifico.
+    
+    Args:
+        league_id: ID del campionato
+        source: Nome della fonte (official, fbref, understat, ecc.)
+        
+    Returns:
+        URL o None se non trovato
+    """
+    league_data = get_league(league_id)
+    
+    if not league_data:
+        return None
+    
+    urls = league_data.get('urls', {})
+    return urls.get(source)
+
+# Inizializza i dati dei campionati su Firebase se necessario
+def initialize_leagues():
+    """Inizializza i dati dei campionati su Firebase se non esistono."""
+    try:
+        initialize_firebase()
+        leagues_ref = db.reference('config/leagues')
+        
+        # Verifica se i dati esistono già
+        existing_data = leagues_ref.get()
+        
+        if not existing_data:
+            # Salva i dati iniziali
+            save_leagues_to_firebase(LEAGUES)
+            logger.info("Dati dei campionati inizializzati su Firebase")
+    except Exception as e:
+        logger.warning(f"Impossibile inizializzare i dati dei campionati su Firebase: {e}")
