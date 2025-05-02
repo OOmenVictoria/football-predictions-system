@@ -1,14 +1,13 @@
 """
 Module for publishing content to WordPress.
 This module provides functionality to publish, update, and delete
-articles on a WordPress site via the WordPress REST API.
+articles on a WordPress site via a custom WordPress API.
 """
 import os
 import sys
 import time
 import logging
 import json
-import base64
 import requests
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
@@ -25,30 +24,29 @@ logger = logging.getLogger(__name__)
 
 class WordPressPublisher:
     """
-    Class for publishing content to WordPress.
+    Class for publishing content to WordPress via custom API.
     
     Handles authentication, content formatting, and interaction
-    with the WordPress REST API.
+    with the WordPress custom API.
     """
     
     def __init__(self):
         """Initialize the WordPress publisher."""
-        self.wp_url = os.getenv('WP_URL')
-        self.wp_user = os.getenv('WP_USER')
-        self.wp_password = os.getenv('WP_APP_PASSWORD')
+        # Base URL for your WordPress site
+        self.wp_base_url = os.getenv('WP_URL').replace('/wp-json/wp/v2', '')
         
-        if not all([self.wp_url, self.wp_user, self.wp_password]):
+        # Custom API endpoint
+        self.api_url = f"{self.wp_base_url}/wp-json/football-predictions/v1"
+        
+        # API Key
+        self.api_key = os.getenv('WP_APP_PASSWORD')
+        
+        if not all([self.wp_base_url, self.api_key]):
             logger.error("WordPress credentials not found in environment variables.")
             raise ValueError("WordPress credentials not found in environment variables.")
         
-        # Verify the URL format
-        if not self.wp_url.endswith('/posts'):
-            if not self.wp_url.endswith('/'):
-                self.wp_url += '/'
-            self.wp_url += 'posts'
-        
-        # Configure authentication
-        self.auth_header = self._create_auth_header()
+        # Configure authentication header
+        self.auth_header = {"X-API-Key": self.api_key}
         
         # Initialize database connection
         self.db = FirebaseManager()
@@ -59,17 +57,6 @@ class WordPressPublisher:
         
         logger.info("WordPress publisher initialized.")
     
-    def _create_auth_header(self) -> Dict[str, str]:
-        """
-        Create authentication header for WordPress API.
-        
-        Returns:
-            Dict[str, str]: Authorization header.
-        """
-        auth_string = f"{self.wp_user}:{self.wp_password}"
-        auth_base64 = base64.b64encode(auth_string.encode()).decode()
-        return {"Authorization": f"Basic {auth_base64}"}
-    
     def test_connection(self) -> bool:
         """
         Test connection to WordPress API.
@@ -78,11 +65,8 @@ class WordPressPublisher:
             bool: True if connection is successful, False otherwise.
         """
         try:
-            # Get base URL without posts
-            base_url = self.wp_url.rsplit('/posts', 1)[0]
-            
-            # Try to access the WordPress API
-            response = requests.get(base_url, headers=self.auth_header)
+            # Try to access the WordPress site
+            response = requests.get(self.wp_base_url)
             
             if response.status_code in [200, 201]:
                 logger.info("WordPress connection test successful.")
@@ -112,6 +96,9 @@ class WordPressPublisher:
         # Get post content
         content = article.get('content', '')
         
+        # Get post excerpt
+        excerpt = article.get('description', '')
+        
         # Get match datetime for scheduling
         match_datetime = article.get('match_datetime', '')
         
@@ -124,50 +111,50 @@ class WordPressPublisher:
             except (ValueError, TypeError):
                 logger.warning(f"Invalid match datetime: {match_datetime}")
         
+        # Get category ID
+        category_id = self._get_category_id(article)
+        
+        # Get tags
+        tags = self._get_tags(article)
+        
         # Format post data
         post_data = {
             "title": title,
             "content": content,
-            "status": "publish",
-            "categories": self._get_category_ids(article),
-            "tags": self._get_tag_ids(article)
+            "excerpt": excerpt,
+            "category_id": category_id,
+            "tags": tags,
+            "metadata": {}
         }
-        
-        # Add excerpt if available
-        if 'description' in article:
-            post_data['excerpt'] = article['description']
-        
-        # Add metadata
-        post_data['meta'] = {}
         
         # Add match ID to metadata
         if 'match_id' in article:
-            post_data['meta']['match_id'] = article['match_id']
+            post_data['metadata']['match_id'] = article['match_id']
         
         # Add expiration time to metadata
         if expiration_time:
-            post_data['meta']['expiration_time'] = expiration_time.isoformat()
+            post_data['metadata']['expiration_time'] = expiration_time.isoformat()
         
         # Add league ID to metadata
         if 'league_id' in article:
-            post_data['meta']['league_id'] = article['league_id']
+            post_data['metadata']['league_id'] = article['league_id']
         
         # Add teams to metadata
         if 'home_team' in article and 'away_team' in article:
-            post_data['meta']['home_team'] = article['home_team']
-            post_data['meta']['away_team'] = article['away_team']
+            post_data['metadata']['home_team'] = article['home_team']
+            post_data['metadata']['away_team'] = article['away_team']
         
         return post_data
     
-    def _get_category_ids(self, article: Dict[str, Any]) -> List[int]:
+    def _get_category_id(self, article: Dict[str, Any]) -> int:
         """
-        Get WordPress category IDs for the article.
+        Get WordPress category ID for the article.
         
         Args:
             article: Article data.
             
         Returns:
-            List[int]: List of category IDs.
+            int: Category ID.
         """
         # Default category for match previews
         default_category_id = get_setting('publishing.default_category_id', 1)
@@ -180,11 +167,11 @@ class WordPressPublisher:
             league_categories = get_setting('publishing.league_categories', {})
             
             if league_id in league_categories:
-                return [league_categories[league_id]]
+                return league_categories[league_id]
         
-        return [default_category_id]
+        return default_category_id
     
-    def _get_tag_ids(self, article: Dict[str, Any]) -> List[int]:
+    def _get_tags(self, article: Dict[str, Any]) -> List[int]:
         """
         Get WordPress tag IDs for the article.
         
@@ -234,7 +221,7 @@ class WordPressPublisher:
             
             # Send request to WordPress API
             response = requests.post(
-                self.wp_url,
+                f"{self.api_url}/publish",
                 headers={
                     **self.auth_header,
                     "Content-Type": "application/json"
@@ -246,8 +233,8 @@ class WordPressPublisher:
                 logger.info(f"Article published successfully: {article.get('title', 'Untitled')}")
                 
                 # Extract post ID
-                post_data = response.json()
-                post_id = post_data.get('id', 0)
+                response_data = response.json()
+                post_id = response_data.get('post_id', 0)
                 
                 # Update article status in database
                 match_id = article.get('match_id', '')
@@ -265,7 +252,7 @@ class WordPressPublisher:
                 return {
                     "success": True,
                     "post_id": post_id,
-                    "post_url": post_data.get('link', '')
+                    "post_url": response_data.get('post_url', '')
                 }
             else:
                 logger.error(f"Failed to publish article: {response.status_code}")
@@ -285,71 +272,6 @@ class WordPressPublisher:
                 "error": f"Error publishing article: {str(e)}"
             }
     
-    def update_article(self, post_id: int, article: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Update an existing article on WordPress.
-        
-        Args:
-            post_id: WordPress post ID.
-            article: Updated article data.
-            
-        Returns:
-            Dict[str, Any]: Response data.
-        """
-        logger.info(f"Updating article ID {post_id}: {article.get('title', 'Untitled')}")
-        
-        try:
-            # Format post data
-            post_data = self.format_post_data(article)
-            
-            # Send request to WordPress API
-            response = requests.post(
-                f"{self.wp_url}/{post_id}",
-                headers={
-                    **self.auth_header,
-                    "Content-Type": "application/json"
-                },
-                json=post_data
-            )
-            
-            if response.status_code in [200, 201]:
-                logger.info(f"Article updated successfully: {article.get('title', 'Untitled')}")
-                
-                # Update article status in database
-                match_id = article.get('match_id', '')
-                language = article.get('language', 'en')
-                
-                if match_id:
-                    article_id = f"{match_id}_{language}"
-                    article_ref = self.db.get_reference(f"content/articles/{article_id}")
-                    article_ref.update({
-                        "status": "updated",
-                        "updated_at": datetime.now().isoformat()
-                    })
-                
-                return {
-                    "success": True,
-                    "post_id": post_id,
-                    "post_url": response.json().get('link', '')
-                }
-            else:
-                logger.error(f"Failed to update article: {response.status_code}")
-                logger.error(f"Response: {response.text}")
-                
-                return {
-                    "success": False,
-                    "error": f"Failed to update article: {response.status_code}",
-                    "response": response.text
-                }
-        
-        except Exception as e:
-            logger.error(f"Error updating article: {e}")
-            
-            return {
-                "success": False,
-                "error": f"Error updating article: {str(e)}"
-            }
-    
     def delete_article(self, post_id: int) -> Dict[str, Any]:
         """
         Delete an article from WordPress.
@@ -365,9 +287,8 @@ class WordPressPublisher:
         try:
             # Send request to WordPress API
             response = requests.delete(
-                f"{self.wp_url}/{post_id}",
-                headers=self.auth_header,
-                params={"force": True}
+                f"{self.api_url}/delete/{post_id}",
+                headers=self.auth_header
             )
             
             if response.status_code in [200, 201, 204]:
@@ -413,6 +334,9 @@ class WordPressPublisher:
         """
         Get articles that have expired and should be deleted.
         
+        This is now handled by checking the database since we can't easily
+        query WordPress for metadata with our custom API.
+        
         Args:
             hours_after_match: Hours after match to consider article expired.
             
@@ -425,55 +349,41 @@ class WordPressPublisher:
             hours_after_match = self.hours_after_match
         
         try:
-            # Get all published articles from WordPress
-            response = requests.get(
-                self.wp_url,
-                headers=self.auth_header,
-                params={
-                    "per_page": 100,
-                    "status": "publish"
-                }
-            )
+            # Get all matches from database
+            matches_ref = self.db.get_reference("data/matches")
+            matches = matches_ref.get() or {}
             
-            if response.status_code != 200:
-                logger.error(f"Failed to get published articles: {response.status_code}")
-                logger.error(f"Response: {response.text}")
-                return []
+            # Filter matches with published articles
+            published_matches = [
+                match for match_id, match in matches.items()
+                if match.get("article_published") and not match.get("article_removed")
+            ]
             
-            # Extract articles with expiration time
-            articles = response.json()
+            # Check which articles have expired
             expired_articles = []
-            
             now = datetime.now()
             
-            for article in articles:
-                # Check if article has match_id metadata
-                if 'meta' not in article or 'match_id' not in article['meta']:
+            for match in published_matches:
+                # Get match datetime
+                match_datetime = parse_date(match.get("datetime", ""))
+                if not match_datetime:
                     continue
                 
-                # Check if article has expiration_time metadata
-                if 'expiration_time' not in article['meta']:
-                    continue
+                # Calculate expiration time
+                expiration_time = match_datetime + timedelta(hours=hours_after_match)
                 
                 # Check if article has expired
-                try:
-                    expiration_time = datetime.fromisoformat(article['meta']['expiration_time'].replace('Z', '+00:00'))
-                    
-                    if now > expiration_time:
-                        expired_articles.append({
-                            "post_id": article['id'],
-                            "title": article['title']['rendered'],
-                            "match_id": article['meta']['match_id'],
-                            "expiration_time": article['meta']['expiration_time']
-                        })
-                
-                except (ValueError, TypeError) as e:
-                    logger.warning(f"Invalid expiration time for article {article['id']}: {e}")
-                    continue
+                if now > expiration_time:
+                    expired_articles.append({
+                        "post_id": match.get("article_id"),
+                        "title": f"{match.get('home_team', '')} vs {match.get('away_team', '')}",
+                        "match_id": match.get("match_id", ""),
+                        "expiration_time": expiration_time.isoformat()
+                    })
             
             logger.info(f"Found {len(expired_articles)} expired articles")
             return expired_articles
-        
+            
         except Exception as e:
             logger.error(f"Error getting expired articles: {e}")
             return []
@@ -525,57 +435,3 @@ class WordPressPublisher:
                 "error": f"Error deleting expired articles: {str(e)}",
                 "deleted_count": 0
             }
-
-# Global functions for simplified access
-def publish_article(article: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Publish an article to WordPress.
-    
-    Args:
-        article: Article data.
-        
-    Returns:
-        Dict[str, Any]: Response data with post ID.
-    """
-    wp = WordPressPublisher()
-    return wp.publish_article(article)
-
-def update_article(post_id: int, article: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Update an existing article on WordPress.
-    
-    Args:
-        post_id: WordPress post ID.
-        article: Updated article data.
-        
-    Returns:
-        Dict[str, Any]: Response data.
-    """
-    wp = WordPressPublisher()
-    return wp.update_article(post_id, article)
-
-def delete_article(post_id: int) -> Dict[str, Any]:
-    """
-    Delete an article from WordPress.
-    
-    Args:
-        post_id: WordPress post ID.
-        
-    Returns:
-        Dict[str, Any]: Response data.
-    """
-    wp = WordPressPublisher()
-    return wp.delete_article(post_id)
-
-def delete_expired_articles(hours_after_match: Optional[int] = None) -> Dict[str, Any]:
-    """
-    Delete articles that have expired.
-    
-    Args:
-        hours_after_match: Hours after match to consider article expired.
-        
-    Returns:
-        Dict[str, Any]: Response data with count of deleted articles.
-    """
-    wp = WordPressPublisher()
-    return wp.delete_expired_articles(hours_after_match)
