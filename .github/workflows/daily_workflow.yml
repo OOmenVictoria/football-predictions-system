@@ -1,5 +1,4 @@
 name: Daily Processing Workflow
-
 on:
   schedule:
     # Run at 00:00, 06:00, 12:00, and 18:00 UTC every day
@@ -24,7 +23,6 @@ on:
         description: 'Run only article publishing'
         required: false
         default: 'false'
-
 jobs:
   process_data:
     runs-on: ubuntu-latest
@@ -45,7 +43,9 @@ jobs:
       
       - name: Setup Firebase credentials
         run: |
-          echo "${{ secrets.FIREBASE_CREDENTIALS }}" > firebase_credentials.json
+          mkdir -p /home/runner/football-predictions/creds/
+          echo "${{ secrets.FIREBASE_CREDENTIALS }}" > /home/runner/football-predictions/creds/firebase-credentials.json
+          echo "FIREBASE_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
         
       - name: Collect match data
         if: ${{ github.event.inputs.run_all_steps == 'true' || github.event.inputs.run_collection == 'true' || github.event_name == 'schedule' }}
@@ -98,7 +98,9 @@ jobs:
       
       - name: Setup Firebase credentials
         run: |
-          echo "${{ secrets.FIREBASE_CREDENTIALS }}" > firebase_credentials.json
+          mkdir -p /home/runner/football-predictions/creds/
+          echo "${{ secrets.FIREBASE_CREDENTIALS }}" > /home/runner/football-predictions/creds/firebase-credentials.json
+          echo "FIREBASE_CREDENTIALS=/home/runner/football-predictions/creds/firebase-credentials.json" >> $GITHUB_ENV
       
       - name: Clean up expired articles
         run: |
