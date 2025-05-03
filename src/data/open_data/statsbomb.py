@@ -652,3 +652,6 @@ def update_all_competitions() -> Dict[str, Dict[str, Any]]:
     """
     client = get_statsbomb_client()
     return client.update_firebase_competitions()
+
+# Alias per retrocompatibilità
+StatsBombLoader = StatsBombClient
