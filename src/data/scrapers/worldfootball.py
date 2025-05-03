@@ -1116,9 +1116,11 @@ class WorldFootballScraper(BaseScraper):
                 away_score = None
                 
                 if result and ':' in result:
-                    if substitution_match:
-                        substitution_in = substitution_match.group(1).strip()
-                        substitution_out = substitution_match.group(2).strip()
+                    # Analizza il risultato
+                    score_parts = result.split(':')
+                    if len(score_parts) >= 2:
+                        home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
+                        away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
                 
                 # Crea oggetto evento
                 event = {
