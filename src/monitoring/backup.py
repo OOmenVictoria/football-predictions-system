@@ -476,3 +476,20 @@ def cleanup_backups(retain_daily: int = 7, retain_weekly: int = 4,
     """
     manager = BackupManager(firebase_manager)
     return manager.cleanup_old_backups(retain_daily, retain_weekly, retain_monthly)
+
+# Aggiungiamo cleanup_old_backups come alias di cleanup_backups per compatibilità
+def cleanup_old_backups(retain_daily: int = 7, retain_weekly: int = 4, 
+                        retain_monthly: int = 12, firebase_manager=None) -> Dict[str, Any]:
+    """
+    Alias di cleanup_backups per compatibilità.
+    
+    Args:
+        retain_daily: Numero di backup giornalieri da conservare
+        retain_weekly: Numero di backup settimanali da conservare
+        retain_monthly: Numero di backup mensili da conservare
+        firebase_manager: Istanza del gestore Firebase (opzionale)
+        
+    Returns:
+        Statistica delle operazioni eseguite
+    """
+    return cleanup_backups(retain_daily, retain_weekly, retain_monthly, firebase_manager)
