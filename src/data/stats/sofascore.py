@@ -156,557 +156,6 @@ class SofaScoreScraper(BaseScraper):
             }
             
             return stats
-    
-    def _extract_player_info(self, player_data: Dict) -> Dict[str, Any]:
-        """Estrae le informazioni base di un giocatore."""
-        player_info = {}
-        
-        try:
-            # Cerca info giocatore nelle diverse strutture
-            player = None
-            
-            if "playerState" in player_data and "player" in player_data["playerState"]:
-                player = player_data["playerState"]["player"]
-            elif "playerDetailsState" in player_data and "player" in player_data["playerDetailsState"]:
-                player = player_data["playerDetailsState"]["player"]
-                
-            if not player:
-                return player_info
-            
-            # Informazioni base
-            player_info["id"] = player.get("id")
-            player_info["name"] = player.get("name")
-            player_info["position"] = player.get("position", {}).get("name", "")
-            player_info["country"] = player.get("country", {}).get("name", "")
-            
-            # Dati fisici
-            if "height" in player:
-                player_info["height"] = player["height"]
-            if "age" in player:
-                player_info["age"] = player["age"]
-            
-            # Immagini
-            if "image" in player:
-                player_info["image"] = player["image"]
-            
-            # Squadra attuale
-            if "team" in player:
-                player_info["team"] = {
-                    "id": player["team"].get("id"),
-                    "name": player["team"].get("name"),
-                }
-                
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione info giocatore: {str(e)}")
-        
-        return player_info
-    
-    def _extract_player_matches(self, player_data: Dict) -> List[Dict[str, Any]]:
-        """Estrae le ultime partite di un giocatore."""
-        matches = []
-        
-        try:
-            # Cerca partite nelle diverse strutture
-            events = None
-            
-            if "playerState" in player_data and "events" in player_data["playerState"]:
-                events = player_data["playerState"]["events"]
-            elif "playerDetailsState" in player_data and "events" in player_data["playerDetailsState"]:
-                events = player_data["playerDetailsState"]["events"]
-                
-            if not events:
-                return matches
-            
-            # Processa ogni partita
-            for match in events:
-                try:
-                    match_info = {
-                        "id": match.get("id"),
-                        "home_team": {
-                            "id": match.get("homeTeam", {}).get("id"),
-                            "name": match.get("homeTeam", {}).get("name")
-                        },
-                        "away_team": {
-                            "id": match.get("awayTeam", {}).get("id"),
-                            "name": match.get("awayTeam", {}).get("name")
-                        },
-                        "score": {
-                            "home": match.get("homeScore", {}).get("display", 0),
-                            "away": match.get("awayScore", {}).get("display", 0)
-                        },
-                        "start_time": match.get("startTimestamp", 0),
-                        "status": match.get("status", {}).get("type", ""),
-                        "tournament": {
-                            "id": match.get("tournament", {}).get("id"),
-                            "name": match.get("tournament", {}).get("name")
-                        }
-                    }
-                    
-                    # Estrai statistiche del giocatore in questa partita
-                    if "playerStatistics" in match:
-                        stats = match["playerStatistics"]
-                        match_info["statistics"] = {
-                            "rating": stats.get("rating"),
-                            "minutes_played": stats.get("minutesPlayed"),
-                            "goals": stats.get("goals", 0),
-                            "assists": stats.get("assists", 0),
-                            "yellow_cards": stats.get("yellowCards", 0),
-                            "red_cards": stats.get("redCards", 0)
-                        }
-                    
-                    # Formatta datetime
-                    if "start_time" in match_info and match_info["start_time"]:
-                        try:
-                            dt = datetime.fromtimestamp(match_info["start_time"])
-                            match_info["start_time_iso"] = dt.isoformat()
-                        except:
-                            pass
-                    
-                    matches.append(match_info)
-                except Exception as e:
-                    self.logger.warning(f"Errore nell'estrazione partita giocatore: {str(e)}")
-                    continue
-                    
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione partite giocatore: {str(e)}")
-        
-        # Ordina per data (più recenti prima)
-        matches.sort(key=lambda x: x.get("start_time", 0), reverse=True)
-        return matches
-    
-    def _extract_player_season_stats(self, player_data: Dict) -> Dict[str, Any]:
-        """Estrae le statistiche stagionali di un giocatore."""
-        stats = {}
-        
-        try:
-            # Cerca statistiche nelle diverse strutture
-            statistics = None
-            
-            if "playerState" in player_data and "statistics" in player_data["playerState"]:
-                statistics = player_data["playerState"]["statistics"]
-            elif "playerDetailsState" in player_data and "statistics" in player_data["playerDetailsState"]:
-                statistics = player_data["playerDetailsState"]["statistics"]
-                
-            if not statistics:
-                return stats
-            
-            # Processa statistiche per categoria
-            for category, category_stats in statistics.items():
-                stats[category] = {}
-                
-                # Processa statistiche della categoria
-                for stat_name, stat_value in category_stats.items():
-                    stats[category][stat_name.lower().replace(" ", "_")] = stat_value
-                    
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione statistiche giocatore: {str(e)}")
-        
-        return stats
-    
-    def _extract_player_stats_from_html(self, soup: BeautifulSoup, player_id: str) -> Dict[str, Any]:
-        """Estrae statistiche giocatore dal HTML (fallback)."""
-        stats = {
-            "player_id": player_id,
-            "source": "sofascore",
-            "last_updated": datetime.now().isoformat(),
-            "info": {},
-            "last_matches": [],
-            "season_stats": {}
-        }
-        
-        try:
-            # Estrai info base giocatore
-            header = soup.select_one('div.sc-hLBbgP')
-            if header:
-                # Nome giocatore
-                name_elem = header.select_one('h2')
-                if name_elem:
-                    stats["info"]["name"] = name_elem.text.strip()
-                
-                # Immagine giocatore
-                img_elem = header.select_one('img')
-                if img_elem:
-                    stats["info"]["image"] = img_elem.get('src', '')
-                
-                # Posizione e altre info
-                info_elems = header.select('div.sc-ikZpkk')
-                if len(info_elems) > 0:
-                    position_text = info_elems[0].text.strip()
-                    stats["info"]["position"] = position_text
-            
-            # Estrai ultime partite
-            matches_section = soup.select_one('div[data-testid="wcl-eventlist"]')
-            if matches_section:
-                match_items = matches_section.select('a')
-                
-                for item in match_items:
-                    try:
-                        # Estrai URL per ID partita
-                        href = item.get('href', '')
-                        match_id_match = re.search(r'/event/(\d+)/', href)
-                        if not match_id_match:
-                            continue
-                            
-                        match_id = match_id_match.group(1)
-                        
-                        # Estrai squadre
-                        team_names = item.select('div.sc-fqkvVR span')
-                        if len(team_names) < 2:
-                            continue
-                            
-                        home_team = team_names[0].text.strip()
-                        away_team = team_names[1].text.strip()
-                        
-                        # Estrai punteggio
-                        score_elems = item.select('span.sc-imWYAI')
-                        home_score = away_score = 0
-                        
-                        if len(score_elems) >= 2:
-                            home_score = self.to_numeric(score_elems[0].text)
-                            away_score = self.to_numeric(score_elems[1].text)
-                        
-                        # Estrai rating giocatore
-                        rating_elem = item.select_one('span.sc-kAyceB')
-                        rating = None
-                        if rating_elem:
-                            rating = self.to_numeric(rating_elem.text)
-                        
-                        # Crea oggetto partita
-                        match_info = {
-                            "id": match_id,
-                            "home_team": {
-                                "name": home_team
-                            },
-                            "away_team": {
-                                "name": away_team
-                            },
-                            "score": {
-                                "home": home_score,
-                                "away": away_score
-                            },
-                            "statistics": {
-                                "rating": rating
-                            }
-                        }
-                        
-                        stats["last_matches"].append(match_info)
-                    except Exception as e:
-                        self.logger.warning(f"Errore nell'estrazione partita da HTML: {str(e)}")
-                        continue
-                        
-        except Exception as e:
-            self.logger.error(f"Errore nell'estrazione dati giocatore HTML: {str(e)}")
-            
-        return stats
-
-# Funzioni wrapper per utilizzo semplificato
-
-def get_team_stats(team_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Ottiene statistiche di una squadra da SofaScore.
-    
-    Args:
-        team_id: ID squadra in SofaScore
-        
-    Returns:
-        Dizionario con statistiche o None se errore
-    """
-    scraper = SofaScoreScraper()
-    return scraper.get_team_stats(team_id)
-
-def get_player_stats(player_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Ottiene statistiche di un giocatore da SofaScore.
-    
-    Args:
-        player_id: ID giocatore in SofaScore
-        
-    Returns:
-        Dizionario con statistiche o None se errore
-    """
-    scraper = SofaScoreScraper()
-    return scraper.get_player_stats(player_id)
-
-def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
-    """
-    Ottiene statistiche di una partita da SofaScore.
-    
-    Args:
-        match_id: ID partita in SofaScore
-        
-    Returns:
-        Dizionario con statistiche o None se errore
-    """
-    scraper = SofaScoreScraper()
-    return scraper.get_match_stats(match_id)
-    
-    def _extract_team_info(self, team_data: Dict) -> Dict[str, Any]:
-        """Estrae le informazioni base di una squadra."""
-        team_info = {}
-        
-        try:
-            # Cerca info team nelle diverse strutture
-            team = None
-            
-            if "teamState" in team_data and "team" in team_data["teamState"]:
-                team = team_data["teamState"]["team"]
-            elif "teamDetailsState" in team_data and "team" in team_data["teamDetailsState"]:
-                team = team_data["teamDetailsState"]["team"]
-                
-            if not team:
-                return team_info
-    
-    def _extract_team_matches(self, team_data: Dict) -> List[Dict[str, Any]]:
-        """Estrae le ultime partite di una squadra."""
-        matches = []
-        
-        try:
-            # Cerca partite nelle diverse strutture
-            events = None
-            
-            if "teamState" in team_data and "lastMatches" in team_data["teamState"]:
-                events = team_data["teamState"]["lastMatches"]
-            elif "teamDetailsState" in team_data and "events" in team_data["teamDetailsState"]:
-                events = team_data["teamDetailsState"]["events"]
-                
-            if not events:
-                return matches
-            
-            team_id = None
-            if "teamState" in team_data and "team" in team_data["teamState"]:
-                team_id = team_data["teamState"]["team"].get("id")
-            elif "teamDetailsState" in team_data and "team" in team_data["teamDetailsState"]:
-                team_id = team_data["teamDetailsState"]["team"].get("id")
-            
-            # Processa ogni partita
-            for match in events:
-                try:
-                    match_info = {
-                        "id": match.get("id"),
-                        "home_team": {
-                            "id": match.get("homeTeam", {}).get("id"),
-                            "name": match.get("homeTeam", {}).get("name")
-                        },
-                        "away_team": {
-                            "id": match.get("awayTeam", {}).get("id"),
-                            "name": match.get("awayTeam", {}).get("name")
-                        },
-                        "score": {
-                            "home": match.get("homeScore", {}).get("display", 0),
-                            "away": match.get("awayScore", {}).get("display", 0)
-                        },
-                        "start_time": match.get("startTimestamp", 0),
-                        "status": match.get("status", {}).get("type", ""),
-                        "tournament": {
-                            "id": match.get("tournament", {}).get("id"),
-                            "name": match.get("tournament", {}).get("name")
-                        }
-                    }
-                    
-                    # Determina se la squadra ha giocato in casa o trasferta
-                    if team_id:
-                        if match["homeTeam"]["id"] == team_id:
-                            match_info["played_at"] = "home"
-                        else:
-                            match_info["played_at"] = "away"
-                            
-                        # Determina risultato dal punto di vista della squadra
-                        if match_info["score"]["home"] > match_info["score"]["away"]:
-                            match_info["result"] = "W" if match_info["played_at"] == "home" else "L"
-                        elif match_info["score"]["home"] < match_info["score"]["away"]:
-                            match_info["result"] = "L" if match_info["played_at"] == "home" else "W"
-                        else:
-                            match_info["result"] = "D"
-                    
-                    # Formatta datetime
-                    if "start_time" in match_info and match_info["start_time"]:
-                        try:
-                            dt = datetime.fromtimestamp(match_info["start_time"])
-                            match_info["start_time_iso"] = dt.isoformat()
-                        except:
-                            pass
-                    
-                    matches.append(match_info)
-                except Exception as e:
-                    self.logger.warning(f"Errore nell'estrazione partita squadra: {str(e)}")
-                    continue
-                    
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione partite squadra: {str(e)}")
-        
-        # Ordina per data (più recenti prima)
-        matches.sort(key=lambda x: x.get("start_time", 0), reverse=True)
-        return matches
-    
-    def _extract_team_season_stats(self, team_data: Dict) -> Dict[str, Any]:
-        """Estrae le statistiche stagionali di una squadra."""
-        stats = {}
-        
-        try:
-            # Cerca statistiche nelle diverse strutture
-            statistics = None
-            
-            if "teamState" in team_data and "statistics" in team_data["teamState"]:
-                statistics = team_data["teamState"]["statistics"]
-            elif "teamDetailsState" in team_data and "statistics" in team_data["teamDetailsState"]:
-                statistics = team_data["teamDetailsState"]["statistics"]
-                
-            if not statistics:
-                return stats
-            
-            # Processa statistiche per categoria
-            for category, category_stats in statistics.items():
-                stats[category] = {}
-                
-                # Processa statistiche della categoria
-                for stat_name, stat_value in category_stats.items():
-                    stats[category][stat_name.lower().replace(" ", "_")] = stat_value
-                    
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione statistiche squadra: {str(e)}")
-        
-        return stats
-    
-    def _extract_team_stats_from_html(self, soup: BeautifulSoup, team_id: str) -> Dict[str, Any]:
-        """Estrae statistiche squadra dal HTML (fallback)."""
-        stats = {
-            "team_id": team_id,
-            "source": "sofascore",
-            "last_updated": datetime.now().isoformat(),
-            "info": {},
-            "last_matches": [],
-            "season_stats": {}
-        }
-        
-        try:
-            # Estrai info base squadra
-            header = soup.select_one('div.sc-hLBbgP')
-            if header:
-                # Nome squadra
-                name_elem = header.select_one('h2')
-                if name_elem:
-                    stats["info"]["name"] = name_elem.text.strip()
-                
-                # Logo squadra
-                logo_elem = header.select_one('img')
-                if logo_elem:
-                    stats["info"]["logo"] = logo_elem.get('src', '')
-            
-            # Estrai ultime partite
-            matches_section = soup.select_one('div[data-testid="wcl-eventlist"]')
-            if matches_section:
-                match_items = matches_section.select('a')
-                
-                for item in match_items:
-                    try:
-                        # Estrai URL per ID partita
-                        href = item.get('href', '')
-                        match_id_match = re.search(r'/event/(\d+)/', href)
-                        if not match_id_match:
-                            continue
-                            
-                        match_id = match_id_match.group(1)
-                        
-                        # Estrai squadre
-                        team_names = item.select('div.sc-fqkvVR span')
-                        if len(team_names) < 2:
-                            continue
-                            
-                        home_team = team_names[0].text.strip()
-                        away_team = team_names[1].text.strip()
-                        
-                        # Estrai punteggio
-                        score_elems = item.select('span.sc-imWYAI')
-                        home_score = away_score = 0
-                        
-                        if len(score_elems) >= 2:
-                            home_score = self.to_numeric(score_elems[0].text)
-                            away_score = self.to_numeric(score_elems[1].text)
-                        
-                        # Crea oggetto partita
-                        match_info = {
-                            "id": match_id,
-                            "home_team": {
-                                "name": home_team
-                            },
-                            "away_team": {
-                                "name": away_team
-                            },
-                            "score": {
-                                "home": home_score,
-                                "away": away_score
-                            }
-                        }
-                        
-                        # Determina se la squadra ha giocato in casa o trasferta
-                        if stats["info"].get("name") == home_team:
-                            match_info["played_at"] = "home"
-                        else:
-                            match_info["played_at"] = "away"
-                            
-                        # Determina risultato dal punto di vista della squadra
-                        if home_score > away_score:
-                            match_info["result"] = "W" if match_info["played_at"] == "home" else "L"
-                        elif home_score < away_score:
-                            match_info["result"] = "L" if match_info["played_at"] == "home" else "W"
-                        else:
-                            match_info["result"] = "D"
-                        
-                        stats["last_matches"].append(match_info)
-                    except Exception as e:
-                        self.logger.warning(f"Errore nell'estrazione partita da HTML: {str(e)}")
-                        continue
-                        
-        except Exception as e:
-            self.logger.error(f"Errore nell'estrazione dati squadra HTML: {str(e)}")
-            
-        return stats
-            
-            # Informazioni base
-            team_info["id"] = team.get("id")
-            team_info["name"] = team.get("name")
-            team_info["short_name"] = team.get("shortName")
-            team_info["country"] = team.get("country", {}).get("name")
-            
-            # Immagini
-            if "logos" in team:
-                logos = team["logos"]
-                if isinstance(logos, list) and len(logos) > 0:
-                    team_info["logo"] = logos[0]
-                elif isinstance(logos, dict):
-                    team_info["logo"] = logos.get("default")
-            
-            # Dati torneo
-            if "tournament" in team:
-                tournament = team["tournament"]
-                team_info["tournament"] = {
-                    "id": tournament.get("id"),
-                    "name": tournament.get("name"),
-                    "category": tournament.get("category", {}).get("name")
-                }
-                
-                # Posizione in classifica
-                if "uniqueTournament" in tournament and "standings" in tournament["uniqueTournament"]:
-                    standings = tournament["uniqueTournament"]["standings"]
-                    
-                    for row in standings:
-                        if row.get("id") == team_info["id"]:
-                            team_info["standing"] = {
-                                "position": row.get("position"),
-                                "points": row.get("points"),
-                                "played": row.get("played"),
-                                "wins": row.get("wins"),
-                                "draws": row.get("draws"),
-                                "losses": row.get("losses"),
-                                "goals_for": row.get("goalsFor"),
-                                "goals_against": row.get("goalsAgainst")
-                            }
-                            break
-                            
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione info squadra: {str(e)}")
-        
-        return team_info
             
         except Exception as e:
             self.logger.error(f"Errore nell'estrazione statistiche partita: {str(e)}")
@@ -1306,8 +755,171 @@ def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
         return stats
     
     def _extract_lineups(self, event_data: Dict) -> Dict[str, Any]:
-        """Estrae le formazioni di una partita."""
-        lineups = {
+    """Estrae le formazioni di una partita."""
+    lineups = {
+        "home": {
+            "formation": "",
+            "players": [],
+            "substitutes": []
+        },
+        "away": {
+            "formation": "",
+            "players": [],
+            "substitutes": []
+        }
+    }
+    
+    try:
+        # Cerca formazioni in strutture diverse
+        if "lineups" in event_data:
+            lineup_data = event_data["lineups"]
+        elif "lineupsState" in event_data and "lineups" in event_data["lineupsState"]:
+            lineup_data = event_data["lineupsState"]["lineups"]
+        else:
+            return lineups
+        
+        # Formazione Casa
+        if "home" in lineup_data:
+            home = lineup_data["home"]
+            lineups["home"]["formation"] = home.get("formation", "")
+            
+            # Giocatori titolari
+            for player in home.get("players", []):
+                player_info = {
+                    "id": player.get("player", {}).get("id"),
+                    "name": player.get("player", {}).get("name"),
+                    "position": player.get("player", {}).get("position", {}).get("name", ""),
+                    "shirt_number": player.get("shirtNumber"),
+                    "rating": player.get("statistics", {}).get("rating"),
+                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                }
+                lineups["home"]["players"].append(player_info)
+            
+            # Sostituti
+            for player in home.get("substitutions", []):
+                player_info = {
+                    "id": player.get("player", {}).get("id"),
+                    "name": player.get("player", {}).get("name"),
+                    "position": player.get("player", {}).get("position", {}).get("name", ""),
+                    "shirt_number": player.get("shirtNumber"),
+                    "rating": player.get("statistics", {}).get("rating"),
+                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                }
+                lineups["home"]["substitutes"].append(player_info)
+        
+        # Formazione Trasferta
+        if "away" in lineup_data:
+            away = lineup_data["away"]
+            lineups["away"]["formation"] = away.get("formation", "")
+            
+            # Giocatori titolari
+            for player in away.get("players", []):
+                player_info = {
+                    "id": player.get("player", {}).get("id"),
+                    "name": player.get("player", {}).get("name"),
+                    "position": player.get("player", {}).get("position", {}).get("name", ""),
+                    "shirt_number": player.get("shirtNumber"),
+                    "rating": player.get("statistics", {}).get("rating"),
+                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                }
+                lineups["away"]["players"].append(player_info)
+            
+            # Sostituti
+            for player in away.get("substitutions", []):
+                player_info = {
+                    "id": player.get("player", {}).get("id"),
+                    "name": player.get("player", {}).get("name"),
+                    "position": player.get("player", {}).get("position", {}).get("name", ""),
+                    "shirt_number": player.get("shirtNumber"),
+                    "rating": player.get("statistics", {}).get("rating"),
+                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                }
+                lineups["away"]["substitutes"].append(player_info)
+                
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione formazioni: {str(e)}")
+    
+    return lineups
+
+def _extract_incidents(self, event_data: Dict) -> List[Dict[str, Any]]:
+    """Estrae gli eventi chiave di una partita (goal, cartellini, etc.)."""
+    incidents = []
+    
+    try:
+        # Cerca eventi in strutture diverse
+        if "incidents" in event_data:
+            incidents_data = event_data["incidents"]
+        elif "incidentsState" in event_data and "incidents" in event_data["incidentsState"]:
+            incidents_data = event_data["incidentsState"]["incidents"]
+        else:
+            return incidents
+        
+        # Processa ogni incidente
+        for incident in incidents_data:
+            try:
+                incident_info = {
+                    "id": incident.get("id"),
+                    "time": incident.get("time"),
+                    "type": incident.get("incidentType"),
+                    "is_home": incident.get("isHome", False)
+                }
+                
+                # Aggiungi dati specifici per tipo
+                if incident["incidentType"] == "goal":
+                    incident_info["scorer"] = {
+                        "id": incident.get("player", {}).get("id"),
+                        "name": incident.get("player", {}).get("name")
+                    }
+                    incident_info["assist"] = {
+                        "id": incident.get("assist", {}).get("id"),
+                        "name": incident.get("assist", {}).get("name")
+                    } if incident.get("assist") else None
+                    incident_info["goal_type"] = incident.get("incidentClass")
+                    incident_info["score"] = {
+                        "home": incident.get("homeScore"),
+                        "away": incident.get("awayScore")
+                    }
+                elif incident["incidentType"] in ["card", "yellowCard", "redCard"]:
+                    incident_info["card_type"] = incident.get("incidentClass", "").lower()
+                    incident_info["player"] = {
+                        "id": incident.get("player", {}).get("id"),
+                        "name": incident.get("player", {}).get("name")
+                    }
+                    incident_info["reason"] = incident.get("reason")
+                elif incident["incidentType"] == "substitution":
+                    incident_info["player_in"] = {
+                        "id": incident.get("playerIn", {}).get("id"),
+                        "name": incident.get("playerIn", {}).get("name")
+                    }
+                    incident_info["player_out"] = {
+                        "id": incident.get("playerOut", {}).get("id"),
+                        "name": incident.get("playerOut", {}).get("name")
+                    }
+                
+                incidents.append(incident_info)
+            except Exception as e:
+                self.logger.warning(f"Errore nell'estrazione incidente: {str(e)}")
+                continue
+                
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione incidenti: {str(e)}")
+    
+    # Ordina per tempo
+    incidents.sort(key=lambda x: x.get("time", 0))
+    return incidents
+    
+def _extract_match_stats_from_html(self, soup: BeautifulSoup, match_id: str) -> Dict[str, Any]:
+    """Estrae statistiche partita dal HTML (fallback)."""
+    stats = {
+        "match_id": match_id,
+        "source": "sofascore",
+        "last_updated": datetime.now().isoformat(),
+        "info": {},
+        "statistics": {
+            "home": {},
+            "away": {}
+        },
+        "lineups": {
             "home": {
                 "formation": "",
                 "players": [],
@@ -1318,223 +930,612 @@ def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
                 "players": [],
                 "substitutes": []
             }
-        }
-        
-        try:
-            # Cerca formazioni in strutture diverse
-            if "lineups" in event_data:
-                lineup_data = event_data["lineups"]
-            elif "lineupsState" in event_data and "lineups" in event_data["lineupsState"]:
-                lineup_data = event_data["lineupsState"]["lineups"]
-            else:
-                return lineups
+        },
+        "incidents": []
+    }
     
-    def _extract_incidents(self, event_data: Dict) -> List[Dict[str, Any]]:
-        """Estrae gli eventi chiave di una partita (goal, cartellini, etc.)."""
-        incidents = []
-        
-        try:
-            # Cerca eventi in strutture diverse
-            if "incidents" in event_data:
-                incidents_data = event_data["incidents"]
-            elif "incidentsState" in event_data and "incidents" in event_data["incidentsState"]:
-                incidents_data = event_data["incidentsState"]["incidents"]
-            else:
-                return incidents
+    try:
+        # Estrai info base partita
+        header = soup.select_one('div.sc-fqkvVR')
+        if header:
+            # Team names
+            team_names = header.select('a.sc-dcJsrY')
+            if len(team_names) >= 2:
+                stats["info"]["home_team"] = {
+                    "name": team_names[0].text.strip()
+                }
+                stats["info"]["away_team"] = {
+                    "name": team_names[1].text.strip()
+                }
             
-            # Processa ogni incidente
-            for incident in incidents_data:
-                try:
-                    incident_info = {
-                        "id": incident.get("id"),
-                        "time": incident.get("time"),
-                        "type": incident.get("incidentType"),
-                        "is_home": incident.get("isHome", False)
-                    }
-                    
-                    # Aggiungi dati specifici per tipo
-                    if incident["incidentType"] == "goal":
-                        incident_info["scorer"] = {
-                            "id": incident.get("player", {}).get("id"),
-                            "name": incident.get("player", {}).get("name")
-                        }
-                        incident_info["assist"] = {
-                            "id": incident.get("assist", {}).get("id"),
-                            "name": incident.get("assist", {}).get("name")
-                        } if incident.get("assist") else None
-                        incident_info["goal_type"] = incident.get("incidentClass")
-                        incident_info["score"] = {
-                            "home": incident.get("homeScore"),
-                            "away": incident.get("awayScore")
-                        }
-                    elif incident["incidentType"] in ["card", "yellowCard", "redCard"]:
-                        incident_info["card_type"] = incident.get("incidentClass", "").lower()
-                        incident_info["player"] = {
-                            "id": incident.get("player", {}).get("id"),
-                            "name": incident.get("player", {}).get("name")
-                        }
-                        incident_info["reason"] = incident.get("reason")
-                    elif incident["incidentType"] == "substitution":
-                        incident_info["player_in"] = {
-                            "id": incident.get("playerIn", {}).get("id"),
-                            "name": incident.get("playerIn", {}).get("name")
-                        }
-                        incident_info["player_out"] = {
-                            "id": incident.get("playerOut", {}).get("id"),
-                            "name": incident.get("playerOut", {}).get("name")
-                        }
-                    
-                    incidents.append(incident_info)
-                except Exception as e:
-                    self.logger.warning(f"Errore nell'estrazione incidente: {str(e)}")
+            # Score
+            score_elems = header.select('div.sc-imWYAI')
+            if len(score_elems) >= 2:
+                stats["info"]["score"] = {
+                    "home": self.to_numeric(score_elems[0].text),
+                    "away": self.to_numeric(score_elems[1].text)
+                }
+        
+        # Estrai statistiche
+        stats_section = soup.select_one('div[data-testid="wcl-statistics"]')
+        if stats_section:
+            stat_items = stats_section.select('div.sc-eDPEul')
+            
+            for item in stat_items:
+                # Estrai nome statistica
+                stat_name_elem = item.select_one('div.sc-eldPxv')
+                if not stat_name_elem:
                     continue
                     
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione incidenti: {str(e)}")
+                stat_name = stat_name_elem.text.strip().lower().replace(" ", "_")
+                
+                # Estrai valori
+                values = item.select('div.sc-fqkvVR')
+                if len(values) >= 2:
+                    home_value = self.to_numeric(values[0].text)
+                    away_value = self.to_numeric(values[1].text)
+                    
+                    # Aggiungi a statistics
+                    if "attack" not in stats["statistics"]["home"]:
+                        stats["statistics"]["home"]["attack"] = {}
+                        stats["statistics"]["away"]["attack"] = {}
+                        
+                    stats["statistics"]["home"]["attack"][stat_name] = home_value
+                    stats["statistics"]["away"]["attack"][stat_name] = away_value
+                    
+    except Exception as e:
+        self.logger.error(f"Errore nell'estrazione statistiche HTML: {str(e)}")
         
-        # Ordina per tempo
-        incidents.sort(key=lambda x: x.get("time", 0))
-        return incidents
+    return stats
     
-    def _extract_match_stats_from_html(self, soup: BeautifulSoup, match_id: str) -> Dict[str, Any]:
-        """Estrae statistiche partita dal HTML (fallback)."""
-        stats = {
-            "match_id": match_id,
-            "source": "sofascore",
-            "last_updated": datetime.now().isoformat(),
-            "info": {},
-            "statistics": {
-                "home": {},
-                "away": {}
-            },
-            "lineups": {
-                "home": {
-                    "formation": "",
-                    "players": [],
-                    "substitutes": []
-                },
-                "away": {
-                    "formation": "",
-                    "players": [],
-                    "substitutes": []
-                }
-            },
-            "incidents": []
-        }
+def _extract_player_info(self, player_data: Dict) -> Dict[str, Any]:
+    """Estrae le informazioni base di un giocatore."""
+    player_info = {}
+    
+    try:
+        # Cerca info giocatore nelle diverse strutture
+        player = None
         
-        try:
-            # Estrai info base partita
-            header = soup.select_one('div.sc-fqkvVR')
-            if header:
-                # Team names
-                team_names = header.select('a.sc-dcJsrY')
-                if len(team_names) >= 2:
-                    stats["info"]["home_team"] = {
-                        "name": team_names[0].text.strip()
-                    }
-                    stats["info"]["away_team"] = {
-                        "name": team_names[1].text.strip()
-                    }
-                
-                # Score
-                score_elems = header.select('div.sc-imWYAI')
-                if len(score_elems) >= 2:
-                    stats["info"]["score"] = {
-                        "home": self.to_numeric(score_elems[0].text),
-                        "away": self.to_numeric(score_elems[1].text)
-                    }
+        if "playerState" in player_data and "player" in player_data["playerState"]:
+            player = player_data["playerState"]["player"]
+        elif "playerDetailsState" in player_data and "player" in player_data["playerDetailsState"]:
+            player = player_data["playerDetailsState"]["player"]
             
-            # Estrai statistiche
-            stats_section = soup.select_one('div[data-testid="wcl-statistics"]')
-            if stats_section:
-                stat_items = stats_section.select('div.sc-eDPEul')
+        if not player:
+            return player_info
+        
+        # Informazioni base
+        player_info["id"] = player.get("id")
+        player_info["name"] = player.get("name")
+        player_info["position"] = player.get("position", {}).get("name", "")
+        player_info["country"] = player.get("country", {}).get("name", "")
+        
+        # Dati fisici
+        if "height" in player:
+            player_info["height"] = player["height"]
+        if "age" in player:
+            player_info["age"] = player["age"]
+        
+        # Immagini
+        if "image" in player:
+            player_info["image"] = player["image"]
+        
+        # Squadra attuale
+        if "team" in player:
+            player_info["team"] = {
+                "id": player["team"].get("id"),
+                "name": player["team"].get("name"),
+            }
+            
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione info giocatore: {str(e)}")
+    
+    return player_info
+    
+def _extract_player_matches(self, player_data: Dict) -> List[Dict[str, Any]]:
+    """Estrae le ultime partite di un giocatore."""
+    matches = []
+    
+    try:
+        # Cerca partite nelle diverse strutture
+        events = None
+        
+        if "playerState" in player_data and "events" in player_data["playerState"]:
+            events = player_data["playerState"]["events"]
+        elif "playerDetailsState" in player_data and "events" in player_data["playerDetailsState"]:
+            events = player_data["playerDetailsState"]["events"]
+            
+        if not events:
+            return matches
+        
+        # Processa ogni partita
+        for match in events:
+            try:
+                match_info = {
+                    "id": match.get("id"),
+                    "home_team": {
+                        "id": match.get("homeTeam", {}).get("id"),
+                        "name": match.get("homeTeam", {}).get("name")
+                    },
+                    "away_team": {
+                        "id": match.get("awayTeam", {}).get("id"),
+                        "name": match.get("awayTeam", {}).get("name")
+                    },
+                    "score": {
+                        "home": match.get("homeScore", {}).get("display", 0),
+                        "away": match.get("awayScore", {}).get("display", 0)
+                    },
+                    "start_time": match.get("startTimestamp", 0),
+                    "status": match.get("status", {}).get("type", ""),
+                    "tournament": {
+                        "id": match.get("tournament", {}).get("id"),
+                        "name": match.get("tournament", {}).get("name")
+                    }
+                }
                 
-                for item in stat_items:
-                    # Estrai nome statistica
-                    stat_name_elem = item.select_one('div.sc-eldPxv')
-                    if not stat_name_elem:
+                # Estrai statistiche del giocatore in questa partita
+                if "playerStatistics" in match:
+                    stats = match["playerStatistics"]
+                    match_info["statistics"] = {
+                        "rating": stats.get("rating"),
+                        "minutes_played": stats.get("minutesPlayed"),
+                        "goals": stats.get("goals", 0),
+                        "assists": stats.get("assists", 0),
+                        "yellow_cards": stats.get("yellowCards", 0),
+                        "red_cards": stats.get("redCards", 0)
+                    }
+                
+                # Formatta datetime
+                if "start_time" in match_info and match_info["start_time"]:
+                    try:
+                        dt = datetime.fromtimestamp(match_info["start_time"])
+                        match_info["start_time_iso"] = dt.isoformat()
+                    except:
+                        pass
+                
+                matches.append(match_info)
+            except Exception as e:
+                self.logger.warning(f"Errore nell'estrazione partita giocatore: {str(e)}")
+                continue
+                
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione partite giocatore: {str(e)}")
+    
+    # Ordina per data (più recenti prima)
+    matches.sort(key=lambda x: x.get("start_time", 0), reverse=True)
+    return matches
+    
+def _extract_player_season_stats(self, player_data: Dict) -> Dict[str, Any]:
+    """Estrae le statistiche stagionali di un giocatore."""
+    stats = {}
+    
+    try:
+        # Cerca statistiche nelle diverse strutture
+        statistics = None
+        
+        if "playerState" in player_data and "statistics" in player_data["playerState"]:
+            statistics = player_data["playerState"]["statistics"]
+        elif "playerDetailsState" in player_data and "statistics" in player_data["playerDetailsState"]:
+            statistics = player_data["playerDetailsState"]["statistics"]
+            
+        if not statistics:
+            return stats
+        
+        # Processa statistiche per categoria
+        for category, category_stats in statistics.items():
+            stats[category] = {}
+            
+            # Processa statistiche della categoria
+            for stat_name, stat_value in category_stats.items():
+                stats[category][stat_name.lower().replace(" ", "_")] = stat_value
+                
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione statistiche giocatore: {str(e)}")
+    
+    return stats
+    
+def _extract_player_stats_from_html(self, soup: BeautifulSoup, player_id: str) -> Dict[str, Any]:
+    """Estrae statistiche giocatore dal HTML (fallback)."""
+    stats = {
+        "player_id": player_id,
+        "source": "sofascore",
+        "last_updated": datetime.now().isoformat(),
+        "info": {},
+        "last_matches": [],
+        "season_stats": {}
+    }
+    
+    try:
+        # Estrai info base giocatore
+        header = soup.select_one('div.sc-hLBbgP')
+        if header:
+            # Nome giocatore
+            name_elem = header.select_one('h2')
+            if name_elem:
+                stats["info"]["name"] = name_elem.text.strip()
+            
+            # Immagine giocatore
+            img_elem = header.select_one('img')
+            if img_elem:
+                stats["info"]["image"] = img_elem.get('src', '')
+            
+            # Posizione e altre info
+            info_elems = header.select('div.sc-ikZpkk')
+            if len(info_elems) > 0:
+                position_text = info_elems[0].text.strip()
+                stats["info"]["position"] = position_text
+        
+        # Estrai ultime partite
+        matches_section = soup.select_one('div[data-testid="wcl-eventlist"]')
+        if matches_section:
+            match_items = matches_section.select('a')
+            
+            for item in match_items:
+                try:
+                    # Estrai URL per ID partita
+                    href = item.get('href', '')
+                    match_id_match = re.search(r'/event/(\d+)/', href)
+                    if not match_id_match:
                         continue
                         
-                    stat_name = stat_name_elem.text.strip().lower().replace(" ", "_")
+                    match_id = match_id_match.group(1)
                     
-                    # Estrai valori
-                    values = item.select('div.sc-fqkvVR')
-                    if len(values) >= 2:
-                        home_value = self.to_numeric(values[0].text)
-                        away_value = self.to_numeric(values[1].text)
+                    # Estrai squadre
+                    team_names = item.select('div.sc-fqkvVR span')
+                    if len(team_names) < 2:
+                        continue
                         
-                        # Aggiungi a statistics
-                        if "attack" not in stats["statistics"]["home"]:
-                            stats["statistics"]["home"]["attack"] = {}
-                            stats["statistics"]["away"]["attack"] = {}
-                            
-                        stats["statistics"]["home"]["attack"][stat_name] = home_value
-                        stats["statistics"]["away"]["attack"][stat_name] = away_value
-                        
-        except Exception as e:
-            self.logger.error(f"Errore nell'estrazione statistiche HTML: {str(e)}")
-            
-        return stats
-            
-            # Formazione Casa
-            if "home" in lineup_data:
-                home = lineup_data["home"]
-                lineups["home"]["formation"] = home.get("formation", "")
-                
-                # Giocatori titolari
-                for player in home.get("players", []):
-                    player_info = {
-                        "id": player.get("player", {}).get("id"),
-                        "name": player.get("player", {}).get("name"),
-                        "position": player.get("player", {}).get("position", {}).get("name", ""),
-                        "shirt_number": player.get("shirtNumber"),
-                        "rating": player.get("statistics", {}).get("rating"),
-                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                    }
-                    lineups["home"]["players"].append(player_info)
-                
-                # Sostituti
-                for player in home.get("substitutions", []):
-                    player_info = {
-                        "id": player.get("player", {}).get("id"),
-                        "name": player.get("player", {}).get("name"),
-                        "position": player.get("player", {}).get("position", {}).get("name", ""),
-                        "shirt_number": player.get("shirtNumber"),
-                        "rating": player.get("statistics", {}).get("rating"),
-                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                    }
-                    lineups["home"]["substitutes"].append(player_info)
-            
-            # Formazione Trasferta
-            if "away" in lineup_data:
-                away = lineup_data["away"]
-                lineups["away"]["formation"] = away.get("formation", "")
-                
-                # Giocatori titolari
-                for player in away.get("players", []):
-                    player_info = {
-                        "id": player.get("player", {}).get("id"),
-                        "name": player.get("player", {}).get("name"),
-                        "position": player.get("player", {}).get("position", {}).get("name", ""),
-                        "shirt_number": player.get("shirtNumber"),
-                        "rating": player.get("statistics", {}).get("rating"),
-                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                    }
-                    lineups["away"]["players"].append(player_info)
-                
-                # Sostituti
-                for player in away.get("substitutions", []):
-                    player_info = {
-                        "id": player.get("player", {}).get("id"),
-                        "name": player.get("player", {}).get("name"),
-                        "position": player.get("player", {}).get("position", {}).get("name", ""),
-                        "shirt_number": player.get("shirtNumber"),
-                        "rating": player.get("statistics", {}).get("rating"),
-                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                    }
-                    lineups["away"]["substitutes"].append(player_info)
+                    home_team = team_names[0].text.strip()
+                    away_team = team_names[1].text.strip()
                     
-        except Exception as e:
-            self.logger.warning(f"Errore nell'estrazione formazioni: {str(e)}")
+                    # Estrai punteggio
+                    score_elems = item.select('span.sc-imWYAI')
+                    home_score = away_score = 0
+                    
+                    if len(score_elems) >= 2:
+                        home_score = self.to_numeric(score_elems[0].text)
+                        away_score = self.to_numeric(score_elems[1].text)
+                    
+                    # Estrai rating giocatore
+                    rating_elem = item.select_one('span.sc-kAyceB')
+                    rating = None
+                    if rating_elem:
+                        rating = self.to_numeric(rating_elem.text)
+                    
+                    # Crea oggetto partita
+                    match_info = {
+                        "id": match_id,
+                        "home_team": {
+                            "name": home_team
+                        },
+                        "away_team": {
+                            "name": away_team
+                        },
+                        "score": {
+                            "home": home_score,
+                            "away": away_score
+                        },
+                        "statistics": {
+                            "rating": rating
+                        }
+                    }
+                    
+                    stats["last_matches"].append(match_info)
+                except Exception as e:
+                    self.logger.warning(f"Errore nell'estrazione partita da HTML: {str(e)}")
+                    continue
+                    
+    except Exception as e:
+        self.logger.error(f"Errore nell'estrazione dati giocatore HTML: {str(e)}")
         
-        return lineups
+    return stats
+    
+def _extract_team_info(self, team_data: Dict) -> Dict[str, Any]:
+    """Estrae le informazioni base di una squadra."""
+    team_info = {}
+    
+    try:
+        # Cerca info team nelle diverse strutture
+        team = None
+        
+        if "teamState" in team_data and "team" in team_data["teamState"]:
+            team = team_data["teamState"]["team"]
+        elif "teamDetailsState" in team_data and "team" in team_data["teamDetailsState"]:
+            team = team_data["teamDetailsState"]["team"]
+            
+        if not team:
+            return team_info
+            
+        # Informazioni base
+        team_info["id"] = team.get("id")
+        team_info["name"] = team.get("name")
+        team_info["short_name"] = team.get("shortName")
+        team_info["country"] = team.get("country", {}).get("name")
+        
+        # Immagini
+        if "logos" in team:
+            logos = team["logos"]
+            if isinstance(logos, list) and len(logos) > 0:
+                team_info["logo"] = logos[0]
+            elif isinstance(logos, dict):
+                team_info["logo"] = logos.get("default")
+        
+        # Dati torneo
+        if "tournament" in team:
+            tournament = team["tournament"]
+            team_info["tournament"] = {
+                "id": tournament.get("id"),
+                "name": tournament.get("name"),
+                "category": tournament.get("category", {}).get("name")
+            }
+            
+            # Posizione in classifica
+            if "uniqueTournament" in tournament and "standings" in tournament["uniqueTournament"]:
+                standings = tournament["uniqueTournament"]["standings"]
+                
+                for row in standings:
+                    if row.get("id") == team_info["id"]:
+                        team_info["standing"] = {
+                            "position": row.get("position"),
+                            "points": row.get("points"),
+                            "played": row.get("played"),
+                            "wins": row.get("wins"),
+                            "draws": row.get("draws"),
+                            "losses": row.get("losses"),
+                            "goals_for": row.get("goalsFor"),
+                            "goals_against": row.get("goalsAgainst")
+                        }
+                        break
+                        
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione info squadra: {str(e)}")
+    
+    return team_info
+    
+def _extract_team_matches(self, team_data: Dict) -> List[Dict[str, Any]]:
+    """Estrae le ultime partite di una squadra."""
+    matches = []
+    
+    try:
+        # Cerca partite nelle diverse strutture
+        events = None
+        
+        if "teamState" in team_data and "lastMatches" in team_data["teamState"]:
+            events = team_data["teamState"]["lastMatches"]
+        elif "teamDetailsState" in team_data and "events" in team_data["teamDetailsState"]:
+            events = team_data["teamDetailsState"]["events"]
+            
+        if not events:
+            return matches
+        
+        team_id = None
+        if "teamState" in team_data and "team" in team_data["teamState"]:
+            team_id = team_data["teamState"]["team"].get("id")
+        elif "teamDetailsState" in team_data and "team" in team_data["teamDetailsState"]:
+            team_id = team_data["teamDetailsState"]["team"].get("id")
+        
+        # Processa ogni partita
+        for match in events:
+            try:
+                match_info = {
+                    "id": match.get("id"),
+                    "home_team": {
+                        "id": match.get("homeTeam", {}).get("id"),
+                        "name": match.get("homeTeam", {}).get("name")
+                    },
+                    "away_team": {
+                        "id": match.get("awayTeam", {}).get("id"),
+                        "name": match.get("awayTeam", {}).get("name")
+                    },
+                    "score": {
+                        "home": match.get("homeScore", {}).get("display", 0),
+                        "away": match.get("awayScore", {}).get("display", 0)
+                    },
+                    "start_time": match.get("startTimestamp", 0),
+                    "status": match.get("status", {}).get("type", ""),
+                    "tournament": {
+                        "id": match.get("tournament", {}).get("id"),
+                        "name": match.get("tournament", {}).get("name")
+                    }
+                }
+                
+                # Determina se la squadra ha giocato in casa o trasferta
+                if team_id:
+                    if match["homeTeam"]["id"] == team_id:
+                        match_info["played_at"] = "home"
+                    else:
+                        match_info["played_at"] = "away"
+                        
+                    # Determina risultato dal punto di vista della squadra
+                    if match_info["score"]["home"] > match_info["score"]["away"]:
+                        match_info["result"] = "W" if match_info["played_at"] == "home" else "L"
+                    elif match_info["score"]["home"] < match_info["score"]["away"]:
+                        match_info["result"] = "L" if match_info["played_at"] == "home" else "W"
+                    else:
+                        match_info["result"] = "D"
+                
+                # Formatta datetime
+                if "start_time" in match_info and match_info["start_time"]:
+                    try:
+                        dt = datetime.fromtimestamp(match_info["start_time"])
+                        match_info["start_time_iso"] = dt.isoformat()
+                    except:
+                        pass
+                
+                matches.append(match_info)
+            except Exception as e:
+                self.logger.warning(f"Errore nell'estrazione partita squadra: {str(e)}")
+                continue
+                
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione partite squadra: {str(e)}")
+    
+    # Ordina per data (più recenti prima)
+    matches.sort(key=lambda x: x.get("start_time", 0), reverse=True)
+    return matches
+    
+def _extract_team_season_stats(self, team_data: Dict) -> Dict[str, Any]:
+    """Estrae le statistiche stagionali di una squadra."""
+    stats = {}
+    
+    try:
+        # Cerca statistiche nelle diverse strutture
+        statistics = None
+        
+        if "teamState" in team_data and "statistics" in team_data["teamState"]:
+            statistics = team_data["teamState"]["statistics"]
+        elif "teamDetailsState" in team_data and "statistics" in team_data["teamDetailsState"]:
+            statistics = team_data["teamDetailsState"]["statistics"]
+            
+        if not statistics:
+            return stats
+        
+        # Processa statistiche per categoria
+        for category, category_stats in statistics.items():
+            stats[category] = {}
+            
+            # Processa statistiche della categoria
+            for stat_name, stat_value in category_stats.items():
+                stats[category][stat_name.lower().replace(" ", "_")] = stat_value
+                
+    except Exception as e:
+        self.logger.warning(f"Errore nell'estrazione statistiche squadra: {str(e)}")
+    
+    return stats
+    
+def _extract_team_stats_from_html(self, soup: BeautifulSoup, team_id: str) -> Dict[str, Any]:
+    """Estrae statistiche squadra dal HTML (fallback)."""
+    stats = {
+        "team_id": team_id,
+        "source": "sofascore",
+        "last_updated": datetime.now().isoformat(),
+        "info": {},
+        "last_matches": [],
+        "season_stats": {}
+    }
+    
+    try:
+        # Estrai info base squadra
+        header = soup.select_one('div.sc-hLBbgP')
+        if header:
+            # Nome squadra
+            name_elem = header.select_one('h2')
+            if name_elem:
+                stats["info"]["name"] = name_elem.text.strip()
+            
+            # Logo squadra
+            logo_elem = header.select_one('img')
+            if logo_elem:
+                stats["info"]["logo"] = logo_elem.get('src', '')
+        
+        # Estrai ultime partite
+        matches_section = soup.select_one('div[data-testid="wcl-eventlist"]')
+        if matches_section:
+            match_items = matches_section.select('a')
+            
+            for item in match_items:
+                try:
+                    # Estrai URL per ID partita
+                    href = item.get('href', '')
+                    match_id_match = re.search(r'/event/(\d+)/', href)
+                    if not match_id_match:
+                        continue
+                        
+                    match_id = match_id_match.group(1)
+                    
+                    # Estrai squadre
+                    team_names = item.select('div.sc-fqkvVR span')
+                    if len(team_names) < 2:
+                        continue
+                        
+                    home_team = team_names[0].text.strip()
+                    away_team = team_names[1].text.strip()
+                    
+                    # Estrai punteggio
+                    score_elems = item.select('span.sc-imWYAI')
+                    home_score = away_score = 0
+                    
+                    if len(score_elems) >= 2:
+                        home_score = self.to_numeric(score_elems[0].text)
+                        away_score = self.to_numeric(score_elems[1].text)
+                    
+                    # Crea oggetto partita
+                    match_info = {
+                        "id": match_id,
+                        "home_team": {
+                            "name": home_team
+                        },
+                        "away_team": {
+                            "name": away_team
+                        },
+                        "score": {
+                            "home": home_score,
+                            "away": away_score
+                        }
+                    }
+                    
+                    # Determina se la squadra ha giocato in casa o trasferta
+                    if stats["info"].get("name") == home_team:
+                        match_info["played_at"] = "home"
+                    else:
+                        match_info["played_at"] = "away"
+                        
+                    # Determina risultato dal punto di vista della squadra
+                    if home_score > away_score:
+                        match_info["result"] = "W" if match_info["played_at"] == "home" else "L"
+                    elif home_score < away_score:
+                        match_info["result"] = "L" if match_info["played_at"] == "home" else "W"
+                    else:
+                        match_info["result"] = "D"
+                    
+                    stats["last_matches"].append(match_info)
+                except Exception as e:
+                    self.logger.warning(f"Errore nell'estrazione partita da HTML: {str(e)}")
+                    continue
+                    
+    except Exception as e:
+        self.logger.error(f"Errore nell'estrazione dati squadra HTML: {str(e)}")
+        
+    return stats
+
+
+# Funzioni wrapper per utilizzo semplificato
+
+def get_team_stats(team_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche di una squadra da SofaScore.
+    
+    Args:
+        team_id: ID squadra in SofaScore
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = SofaScoreScraper()
+    return scraper.get_team_stats(team_id)
+
+def get_player_stats(player_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche di un giocatore da SofaScore.
+    
+    Args:
+        player_id: ID giocatore in SofaScore
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = SofaScoreScraper()
+    return scraper.get_player_stats(player_id)
+
+def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche di una partita da SofaScore.
+    
+    Args:
+        match_id: ID partita in SofaScore
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = SofaScoreScraper()
+    return scraper.get_match_stats(match_id)
