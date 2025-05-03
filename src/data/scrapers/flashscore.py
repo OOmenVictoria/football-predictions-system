@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from src.data.scrapers.base_scraper import BaseScraper
-from src.utils.time_utils import parse_date
+from src.utils.time_utils import parse_date, date_to_str
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
