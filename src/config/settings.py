@@ -80,6 +80,9 @@ WORDPRESS_APP_PASSWORD = os.getenv('WP_APP_PASSWORD', '')
 FOOTBALL_DATA_API_KEY = os.getenv('FOOTBALL_API_KEY', '')
 RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY', '')
 
+# Alias per compatibilità con il codice esistente
+FOOTBALL_API_KEY = FOOTBALL_DATA_API_KEY
+
 # Configurazione cache
 CACHE_TTL = {
     'default': int(os.getenv('DEFAULT_CACHE_TTL', 3600)),  # 1 ora
