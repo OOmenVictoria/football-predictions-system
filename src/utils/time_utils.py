@@ -72,6 +72,57 @@ def format_date(dt: Optional[Union[datetime, date, str]] = None,
         logger.error(f"Errore formattazione data: {str(e)}")
         return str(dt)
 
+def format_datetime(dt: Optional[Union[datetime, str]] = None,
+                    format_str: str = "%Y-%m-%d %H:%M:%S",
+                    locale: str = "it") -> str:
+    """
+    Formatta una data con ora nel formato specificato.
+    
+    Args:
+        dt: Oggetto datetime o stringa ISO. Se None, usa adesso
+        format_str: Formato stringa per l'output (default: YYYY-MM-DD HH:MM:SS)
+        locale: Locale per la formattazione (default: italiano)
+        
+    Returns:
+        Stringa formattata
+    """
+    if dt is None:
+        dt = datetime.now()
+    
+    # Se è una stringa, converti in datetime
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except ValueError:
+            logger.error(f"Formato datetime non supportato: {dt}")
+            return str(dt)
+    
+    # Verifica che sia un datetime (non una date)
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        dt = datetime.combine(dt, datetime.min.time())
+    
+    # Formattazione standard
+    try:
+        if locale.lower() == "it":
+            # Formati personalizzati per italiano
+            if format_str == "%d %B %Y %H:%M":  # 01 Gennaio 2025 15:30
+                months_it = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+                           "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+                return f"{dt.day:02d} {months_it[dt.month - 1]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
+                
+            if format_str == "%A %d %B %Y %H:%M":  # Lunedì 01 Gennaio 2025 15:30
+                days_it = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", 
+                          "Venerdì", "Sabato", "Domenica"]
+                months_it = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+                           "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+                return f"{days_it[dt.weekday()]} {dt.day:02d} {months_it[dt.month - 1]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
+        
+        # Formattazione standard per tutti gli altri casi
+        return dt.strftime(format_str)
+    except Exception as e:
+        logger.error(f"Errore formattazione datetime: {str(e)}")
+        return str(dt)
+
 def parse_date(date_str: str, formats: List[str] = None) -> Optional[datetime]:
     """
     Converte una stringa in un oggetto datetime.
