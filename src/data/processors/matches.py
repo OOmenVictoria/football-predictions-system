@@ -2423,14 +2423,6 @@ def get_processor():
         
         return 'unknown'
             
-            # Statistiche (se disponibili)
-            if 'stats' in match_data and match_data['stats']:
-                output['statistics'] = match_data['stats']
-            
-            # Eventi (se disponibili)
-            if 'events' in match_data and match_data['events']:
-                output['events'] = match_data['events']
-            
         except Exception as e:
             logger.error(f"Errore nella normalizzazione dei dati WhoScored: {e}")
     
