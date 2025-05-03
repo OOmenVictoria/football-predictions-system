@@ -720,7 +720,7 @@ class WorldFootballScraper(BaseScraper):
                     title_match = re.search(r'(.+?)\s*(-|:)\s*(.+)', title_text)
                     if title_match:
                         home_name = title_match.group(1).strip()
-                        away_name = title_match.group(3].strip()
+                        away_name = title_match.group(3).strip()
                         
                         match_info['home_team'] = {'name': home_name}
                         match_info['away_team'] = {'name': away_name}
