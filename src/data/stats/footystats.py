@@ -807,3 +807,16 @@ def get_team_stats(team_id: str, season: str = "2023-2024") -> Optional[Dict[str
     """
     scraper = FootyStatsScraper()
     return scraper.get_team_stats(team_id, season)
+
+def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche di una partita da FootyStats.
+    
+    Args:
+        match_id: Identificatore partita in FootyStats
+        
+    Returns:
+        Dizionario con statistiche della partita o None se errore
+    """
+    scraper = FootyStatsScraper()
+    return scraper.get_match_stats(match_id)
