@@ -21,7 +21,7 @@ from src.utils.time_utils import parse_date, format_date
 # Configurazione logger
 logger = logging.getLogger(__name__)
 
-class FlashscoreScraper(BaseScraper):
+class FlashScoreScraper(BaseScraper):
     """
     Scraper per il sito Flashscore.com.
     
@@ -608,7 +608,7 @@ class FlashscoreScraper(BaseScraper):
             return None
 
 # Istanza globale per un utilizzo più semplice
-flashscore_scraper = FlashscoreScraper()
+flashscore_scraper = FlashScoreScraper()
 
 def get_scraper():
     """
