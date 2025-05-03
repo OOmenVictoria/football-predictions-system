@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 
 from src.data.scrapers.base_scraper import BaseScraper
 from src.utils.cache import cached
-from src.utils.time_utils import parse_date
+from src.utils.time_utils import parse_date, date_to_str
 from src.config.settings import get_setting
 
 logger = logging.getLogger(__name__)
