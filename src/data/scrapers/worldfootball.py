@@ -557,10 +557,10 @@ class WorldFootballScraper(BaseScraper):
                     away_score = None
                     
                     if result and ':' in result:
-                    score_parts = result.split(':')
-                    if len(score_parts) >= 2:
-                        home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
-                        away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
+                        score_parts = result.split(':')
+                        if len(score_parts) >= 2:
+                            home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
+                            away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
                 
                 # Estrai link dettagli partita
                 match_id = None
