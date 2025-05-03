@@ -1533,13 +1533,270 @@ class WhoScoredScraper(BaseScraper):
     def _get_fbref_player_stats(self, player_name: str, team_name: str = "") -> Dict[str, Any]:
         """
         Estrae statistiche giocatore da FBref.
-        
+    
         Args:
             player_name: Nome del giocatore
             team_name: Nome della squadra (opzionale)
-            
+        
         Returns:
             Statistiche del giocatore
         """
         try:
             # Normalizza il nome per la ricerca
+            player_name = player_name.lower().replace(' ', '-')
+        
+            # URL ricerca
+            search_url = f"{self.base_urls['fbref']}/search/search.fcgi?search={player_name}"
+        
+            # Cerca il giocatore
+            soup = self._get_soup(search_url)
+        
+            # Trova link giocatore nei risultati
+            player_section = soup.select_one('div#players')
+            if not player_section:
+                logger.warning(f"Nessun risultato giocatore per {player_name} su FBref")
+                return {}
+            
+            player_link = player_section.select_one('div.search-item-url')
+            if not player_link:
+                logger.warning(f"Link giocatore non trovato per {player_name} su FBref")
+                return {}
+            
+            player_url = player_link.text.strip()
+        
+            # Estrai statistiche dalla pagina giocatore
+            soup = self._get_soup(player_url)
+        
+            # Inizializza struttura dati
+            stats = {
+                'player_info': {
+                    'name': player_name,
+                    'team': '',
+                    'position': '',
+                    'nationality': '',
+                    'age': None,
+                    'height': None,
+                    'weight': None
+                },
+                'season_stats': {},
+                'recent_form': [],
+                'international': {'caps': 0, 'goals': 0}
+            }
+        
+            # Estrai info giocatore
+            info_div = soup.select_one('div#info')
+            if info_div:
+                # Posizione
+                position_p = info_div.find('p', string=re.compile('Position'))
+                if position_p:
+                    stats['player_info']['position'] = position_p.find('strong').text.strip()
+            
+                # Età
+                age_p = info_div.find('p', string=re.compile('Born'))
+                if age_p:
+                    age_text = age_p.find('strong').text
+                    stats['player_info']['age'] = self._parse_numeric(age_text.split('(')[1].split()[0])
+            
+                # Nazionalità
+                national_team_p = info_div.find('p', string=re.compile('National Team'))
+                if national_team_p:
+                    stats['player_info']['nationality'] = national_team_p.find('strong').text.strip()
+            
+                # Altezza e peso
+                height_p = info_div.find('p', string=re.compile('Height'))
+                if height_p:
+                    height_text = height_p.find('strong').text
+                    stats['player_info']['height'] = height_text.strip()
+        
+            # Estrai statistiche stagionali
+            stats_tables = soup.select('table.stats_table')
+            for table in stats_tables:
+                table_id = table.get('id', '')
+            
+                if 'stats' in table_id:
+                    category = table_id.replace('stats_', '').lower()
+                    stats['season_stats'][category] = {}
+                
+                    rows = table.select('tbody tr')
+                    for row in rows:
+                        cells = row.select('td')
+                        if len(cells) < 2:
+                            continue
+                        
+                        for cell in cells:
+                            if cell.get('data-stat'):
+                                stat_name = cell.get('data-stat').lower().replace(' ', '_')
+                                stat_value = self._parse_numeric(cell.text)
+                                stats['season_stats'][category][stat_name] = stat_value
+        
+            # Estrai ultime partite
+            match_table = soup.select_one('table#matchlogs_for')
+            if match_table:
+                rows = match_table.select('tbody tr')[:5]  # Ultime 5 partite
+            
+                for row in rows:
+                    cells = row.select('td')
+                    if len(cells) < 5:
+                        continue
+                    
+                    # Dettagli partita
+                    date = cells[0].text.strip()
+                    competition = cells[1].text.strip()
+                    opponent = cells[4].text.strip()
+                    result = cells[3].text.strip()
+                
+                    # Performance in partita
+                    minutes = self._parse_numeric(cells[5].text)
+                    rating = None  # FBref tipicamente non ha rating
+                
+                    match_data = {
+                        'date': date,
+                        'competition': competition,
+                        'opponent': opponent,
+                        'result': result,
+                        'minutes': minutes,
+                        'rating': rating
+                    }
+                
+                    stats['recent_form'].append(match_data)
+        
+            # Estrai statistiche internazionali
+            int_table = soup.select_one('table#stats_nation')
+            if int_table:
+                rows = int_table.select('tbody tr')
+                for row in rows:
+                    caps_td = row.select_one('td[data-stat="caps"]')
+                    goals_td = row.select_one('td[data-stat="goals"]')
+                
+                    if caps_td and goals_td:
+                        stats['international']['caps'] += self._parse_numeric(caps_td.text)
+                        stats['international']['goals'] += self._parse_numeric(goals_td.text)
+        
+            return stats
+        
+        except Exception as e:
+            logger.error(f"Errore nell'estrazione dati giocatore FBref: {str(e)}")
+            return {}
+
+def _get_footystats_player_stats(self, player_name: str, team_name: str = "") -> Dict[str, Any]:
+    """
+    Estrae statistiche giocatore da FootyStats.
+    
+    Args:
+        player_name: Nome del giocatore
+        team_name: Nome della squadra (opzionale)
+        
+    Returns:
+        Statistiche del giocatore
+    """
+    try:
+        # Normalizza il nome per la ricerca
+        player_name = player_name.lower().replace(' ', '-')
+        
+        # URL giocatore
+        player_url = f"{self.base_urls['footystats']}/player/{player_name}"
+        
+        # Estrai statistiche
+        soup = self._get_soup(player_url)
+        
+        # Inizializza struttura dati
+        stats = {
+            'player_info': {
+                'name': player_name,
+                'team': '',
+                'position': '',
+                'nationality': '',
+                'age': None
+            },
+            'season_stats': {},
+            'ratings': [],
+            'recent_matches': []
+        }
+        
+        # Estrai info giocatore
+        player_header = soup.select_one('div.player-header')
+        if player_header:
+            # Nome completo
+            name_h1 = player_header.select_one('h1')
+            if name_h1:
+                stats['player_info']['name'] = name_h1.text.strip()
+            
+            # Team
+            team_a = player_header.select_one('a[href*="/team/"]')
+            if team_a:
+                stats['player_info']['team'] = team_a.text.strip()
+            
+            # Posizione
+            position_span = player_header.select_one('span.player-position')
+            if position_span:
+                stats['player_info']['position'] = position_span.text.strip()
+            
+            # Età e nazionalità
+            details_span = player_header.select('span.player-detail')
+            for detail in details_span:
+                text = detail.text.strip()
+                if text.isdigit():
+                    stats['player_info']['age'] = int(text)
+                elif text:
+                    stats['player_info']['nationality'] = text
+        
+        # Estrai statistiche stagionali
+        stats_tables = soup.select('table.player-stats-table')
+        for table in stats_tables:
+            caption = table.select_one('caption')
+            if not caption:
+                continue
+                
+            category = caption.text.strip().lower().replace(' ', '_')
+            stats['season_stats'][category] = {}
+            
+            rows = table.select('tr')
+            for row in rows:
+                cells = row.select('td')
+                if len(cells) < 2:
+                    continue
+                    
+                stat_name = cells[0].text.strip().lower().replace(' ', '_')
+                stat_value = self._parse_numeric(cells[1].text)
+                stats['season_stats'][category][stat_name] = stat_value
+        
+        # Estrai ratings
+        ratings_div = soup.select_one('div.player-ratings')
+        if ratings_div:
+            rating_cards = ratings_div.select('div.rating-card')
+            for card in rating_cards:
+                competition = card.select_one('h3').text.strip() if card.select_one('h3') else 'Unknown'
+                rating_value = self._parse_numeric(card.select_one('div.rating-value').text)
+                
+                stats['ratings'].append({
+                    'competition': competition,
+                    'rating': rating_value
+                })
+        
+        # Estrai ultime partite
+        matches_table = soup.select_one('table.player-matches-table')
+        if matches_table:
+            rows = matches_table.select('tbody tr')[:5]  # Ultime 5
+            
+            for row in rows:
+                cells = row.select('td')
+                if len(cells) < 4:
+                    continue
+                    
+                date = cells[0].text.strip()
+                competition = cells[1].text.strip()
+                opponent = cells[2].text.strip()
+                rating = self._parse_numeric(cells[3].text)
+                
+                stats['recent_matches'].append({
+                    'date': date,
+                    'competition': competition,
+                    'opponent': opponent,
+                    'rating': rating
+                })
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Errore nell'estrazione dati giocatore FootyStats: {str(e)}")
+        return {}
