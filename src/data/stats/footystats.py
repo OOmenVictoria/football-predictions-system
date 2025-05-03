@@ -793,3 +793,17 @@ class FootyStatsScraper(BaseScraper):
             
             if score_cell:
                 score_text = score_
+
+def get_team_stats(team_id: str, season: str = "2023-2024") -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche di squadra complete da FootyStats.
+    
+    Args:
+        team_id: Identificatore squadra in FootyStats
+        season: Stagione (formato "YYYY-YYYY")
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = FootyStatsScraper()
+    return scraper.get_team_stats(team_id, season)
