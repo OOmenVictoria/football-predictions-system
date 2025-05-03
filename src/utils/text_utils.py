@@ -298,6 +298,19 @@ def generate_slug(text: str) -> str:
     # Rimuove trattini all'inizio e alla fine
     return text.strip('-')
 
+# Aggiungiamo un alias per slugify che richiama generate_slug
+def slugify(text: str) -> str:
+    """
+    Alias per generate_slug. Genera uno slug SEO-friendly da un testo.
+    
+    Args:
+        text: Testo da convertire in slug
+        
+    Returns:
+        Slug (es. "inter-vs-milan-serie-a")
+    """
+    return generate_slug(text)
+
 def extract_keywords(text: str, max_keywords: int = 5) -> List[str]:
     """
     Estrae parole chiave da un testo.
