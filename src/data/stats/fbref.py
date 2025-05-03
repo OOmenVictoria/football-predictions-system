@@ -924,3 +924,17 @@ class FBrefScraper(BaseScraper):
         except Exception:
             pass
         return None
+
+    def get_team_stats(team_id: str, season: str = "2023-2024") -> Optional[Dict[str, Any]]:
+     """
+     Ottiene statistiche di squadra complete da FBref.
+    
+     Args:
+         team_id: Identificatore squadra in FBref (es. "fd962109")
+         season: Stagione (formato "YYYY-YYYY")
+        
+     Returns:
+         Dizionario con statistiche o None se errore
+     """
+     scraper = FBrefScraper()
+     return scraper.get_team_stats(team_id, season)
