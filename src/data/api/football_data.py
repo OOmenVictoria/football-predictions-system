@@ -446,3 +446,118 @@ def get_api():
         Istanza di FootballDataAPI.
     """
     return football_data_api
+
+# Funzioni wrapper per permettere import diretto delle funzioni
+
+def get_competitions() -> List[Dict[str, Any]]:
+    """
+    Wrapper per football_data_api.get_competitions().
+    Ottiene l'elenco delle competizioni disponibili.
+    
+    Returns:
+        Lista delle competizioni disponibili.
+    """
+    try:
+        result = football_data_api.get_competitions()
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_competitions(): {e}")
+        return []
+
+def get_matches(competition_id: str, **kwargs) -> List[Dict[str, Any]]:
+    """
+    Wrapper per football_data_api.get_matches().
+    Ottiene le partite per una competizione.
+    
+    Args:
+        competition_id: ID o codice della competizione.
+        **kwargs: Parametri aggiuntivi (date_from, date_to, status, ecc.).
+    
+    Returns:
+        Lista delle partite.
+    """
+    try:
+        result = football_data_api.get_matches(competition_id, **kwargs)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_matches({competition_id}): {e}")
+        return []
+
+def get_team(team_id: int) -> Dict[str, Any]:
+    """
+    Wrapper per football_data_api.get_team().
+    Ottiene informazioni su una squadra.
+    
+    Args:
+        team_id: ID della squadra.
+    
+    Returns:
+        Informazioni sulla squadra.
+    """
+    try:
+        return football_data_api.get_team(team_id)
+    except Exception as e:
+        logger.error(f"Errore in get_team({team_id}): {e}")
+        return {}
+
+def get_team_matches(team_id: int, **kwargs) -> List[Dict[str, Any]]:
+    """
+    Wrapper per football_data_api.get_team_matches().
+    Ottiene le partite di una squadra.
+    
+    Args:
+        team_id: ID della squadra.
+        **kwargs: Parametri aggiuntivi (status, limit, ecc.).
+    
+    Returns:
+        Lista delle partite della squadra.
+    """
+    try:
+        result = football_data_api.get_team_matches(team_id, **kwargs)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_team_matches({team_id}): {e}")
+        return []
+
+def get_match(match_id: int) -> Dict[str, Any]:
+    """
+    Wrapper per football_data_api.get_match().
+    Ottiene informazioni su una partita specifica.
+    
+    Args:
+        match_id: ID della partita.
+    
+    Returns:
+        Informazioni sulla partita.
+    """
+    try:
+        return football_data_api.get_match(match_id)
+    except Exception as e:
+        logger.error(f"Errore in get_match({match_id}): {e}")
+        return {}
+
+def get_standings(competition_id: str) -> List[Dict[str, Any]]:
+    """
+    Wrapper per football_data_api.get_standings().
+    Ottiene la classifica di una competizione.
+    
+    Args:
+        competition_id: ID o codice della competizione.
+    
+    Returns:
+        Classifica della competizione.
+    """
+    try:
+        result = football_data_api.get_standings(competition_id)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_standings({competition_id}): {e}")
+        return []
