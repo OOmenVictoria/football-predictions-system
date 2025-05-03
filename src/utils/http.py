@@ -31,6 +31,36 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 OPR/78.0.4093.184"
 ]
 
+class HTTPError(Exception):
+    """
+    Eccezione sollevata in caso di errori HTTP.
+    
+    Attributes:
+        status_code (int): Codice di stato HTTP
+        response (requests.Response): Oggetto di risposta
+        message (str): Messaggio di errore
+    """
+    
+    def __init__(self, message: str, status_code: Optional[int] = None, 
+                 response: Optional[requests.Response] = None):
+        """
+        Inizializza un'eccezione HTTPError.
+        
+        Args:
+            message: Messaggio di errore
+            status_code: Codice di stato HTTP
+            response: Oggetto di risposta
+        """
+        self.status_code = status_code
+        self.response = response
+        self.message = message
+        super().__init__(self.message)
+    
+    def __str__(self):
+        """Rappresentazione testuale dell'errore."""
+        status_info = f" [Status: {self.status_code}]" if self.status_code else ""
+        return f"HTTP Error{status_info}: {self.message}"
+
 # Definizione della classe APIError
 class APIError(Exception):
     """
