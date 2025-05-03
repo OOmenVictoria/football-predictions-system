@@ -1574,3 +1574,11 @@ def get_player_ratings(player_id: str) -> Optional[Dict[str, Any]]:
         }
     
     return None
+
+def get_scraper() -> SofaScoreScraper:
+    """Restituisce un'istanza dello scraper SofaScore.
+    
+    Returns:
+        SofaScoreScraper: Un'istanza configurata dello scraper SofaScore
+    """
+    return SofaScoreScraper()
