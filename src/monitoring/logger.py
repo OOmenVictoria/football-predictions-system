@@ -365,3 +365,38 @@ def get_logger(name=None):
         child_logger = logging.getLogger(f'football_predictions.{name}')
         return child_logger
     return logger.logger
+
+# Funzione setup_logger come interfaccia alla classe FootballLogger
+def setup_logger(name=None, log_to_console=True, log_to_file=True, 
+                log_to_firebase=False, log_level=logging.INFO,
+                firebase_ref_path='logs') -> logging.Logger:
+    """
+    Configura e restituisce un logger.
+    
+    Args:
+        name: Nome del logger
+        log_to_console: Se attivare il logging su console
+        log_to_file: Se attivare il logging su file
+        log_to_firebase: Se attivare il logging su Firebase
+        log_level: Livello minimo di logging
+        firebase_ref_path: Percorso di riferimento nel database Firebase
+        
+    Returns:
+        Logger configurato
+    """
+    # Ottiene l'istanza singleton
+    football_logger = FootballLogger()
+    
+    # Se richiesto, attiva il logging su Firebase
+    if log_to_firebase:
+        football_logger.set_firebase_logging(True, firebase_ref_path)
+    
+    # Ottiene un logger child se specificato un nome
+    if name:
+        child_logger = logging.getLogger(f'football_predictions.{name}')
+        child_logger.setLevel(log_level)
+        return child_logger
+    
+    # Altrimenti restituisce il logger principale
+    football_logger.logger.setLevel(log_level)
+    return football_logger.logger
