@@ -662,6 +662,59 @@ def cached(ttl: int = 3600, namespace: str = "default", key_fn: Optional[Callabl
         return wrapper
     return decorator
 
+def get_cache_size(namespace: Optional[str] = None, cache_dir: Optional[str] = None) -> Dict[str, float]:
+    """
+    Ottiene la dimensione della cache in MB.
+    
+    Args:
+        namespace: Nome specifico della cache di cui ottenere la dimensione, se None calcola per tutte
+        cache_dir: Directory per la cache, se None usa la directory predefinita
+        
+    Returns:
+        Dizionario con le dimensioni in MB per tipo di cache
+    """
+    result = {
+        "memory": 0.0,
+        "disk": 0.0,
+        "firebase": 0.0,
+        "total": 0.0
+    }
+    
+    # Set default cache directory
+    if not cache_dir:
+        cache_dir = os.path.expanduser("~/football-predictions/cache")
+        
+    try:
+        # Dimensione cache su disco
+        if namespace:
+            # Calcola solo per il namespace specificato
+            db_path = os.path.join(cache_dir, f"{namespace}.db")
+            if os.path.exists(db_path):
+                size_bytes = os.path.getsize(db_path)
+                size_mb = size_bytes / (1024 * 1024)
+                result["disk"] = round(size_mb, 2)
+        else:
+            # Calcola per tutti i file della cache
+            total_size = 0
+            if os.path.exists(cache_dir):
+                for file in os.listdir(cache_dir):
+                    if file.endswith(".db"):
+                        file_path = os.path.join(cache_dir, file)
+                        total_size += os.path.getsize(file_path)
+                        
+            size_mb = total_size / (1024 * 1024)
+            result["disk"] = round(size_mb, 2)
+        
+        # Non possiamo calcolare facilmente la dimensione della cache in memoria
+        # o su Firebase, quindi lasciamo 0
+        
+        result["total"] = result["memory"] + result["disk"] + result["firebase"]
+        
+        return result
+    except Exception as e:
+        logger.error(f"Errore nel calcolo della dimensione della cache: {str(e)}")
+        return result
+
 # Aggiungiamo la funzione clear_cache a livello di modulo
 def clear_cache(namespace: Optional[str] = None, cache_dir: Optional[str] = None, expired_only: bool = False) -> bool:
     """
@@ -781,4 +834,45 @@ def clear_cache(namespace: Optional[str] = None, cache_dir: Optional[str] = None
         return success
     except Exception as e:
         logger.error(f"Errore durante la pulizia della cache: {str(e)}")
+        return False
+
+def purge_old_cache(days: int = 30, cache_dir: Optional[str] = None) -> bool:
+    """
+    Rimuove i file di cache più vecchi di un determinato periodo.
+    
+    Args:
+        days: Numero di giorni oltre i quali un file è considerato vecchio
+        cache_dir: Directory per la cache, se None usa la directory predefinita
+        
+    Returns:
+        True se l'operazione ha avuto successo, False altrimenti
+    """
+    try:
+        # Set default cache directory
+        if not cache_dir:
+            cache_dir = os.path.expanduser("~/football-predictions/cache")
+            
+        if not os.path.exists(cache_dir):
+            logger.warning(f"Directory cache non trovata: {cache_dir}")
+            return True
+            
+        # Calcola il timestamp limite
+        now = time.time()
+        limit_timestamp = now - (days * 24 * 60 * 60)
+        
+        # Rimuovi i file vecchi
+        removed_count = 0
+        for file in os.listdir(cache_dir):
+            file_path = os.path.join(cache_dir, file)
+            if os.path.isfile(file_path):
+                file_mtime = os.path.getmtime(file_path)
+                if file_mtime < limit_timestamp:
+                    os.remove(file_path)
+                    removed_count += 1
+                    logger.debug(f"Rimosso file cache vecchio: {file_path}")
+        
+        logger.info(f"Rimossi {removed_count} file di cache vecchi (> {days} giorni)")
+        return True
+    except Exception as e:
+        logger.error(f"Errore durante la pulizia della cache vecchia: {str(e)}")
         return False
