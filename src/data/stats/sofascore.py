@@ -777,69 +777,69 @@ class SofaScoreScraper(BaseScraper):
                 lineup_data = event_data["lineupsState"]["lineups"]
             else:
                 return lineups
+            
+            # Formazione Casa
+            if "home" in lineup_data:
+                home = lineup_data["home"]
+                lineups["home"]["formation"] = home.get("formation", "")
+            
+                # Giocatori titolari
+                for player in home.get("players", []):
+                    player_info = {
+                        "id": player.get("player", {}).get("id"),
+                        "name": player.get("player", {}).get("name"),
+                        "position": player.get("player", {}).get("position", {}).get("name", ""),
+                        "shirt_number": player.get("shirtNumber"),
+                        "rating": player.get("statistics", {}).get("rating"),
+                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                    }
+                    lineups["home"]["players"].append(player_info)
+            
+                # Sostituti
+                for player in home.get("substitutions", []):
+                    player_info = {
+                        "id": player.get("player", {}).get("id"),
+                        "name": player.get("player", {}).get("name"),
+                        "position": player.get("player", {}).get("position", {}).get("name", ""),
+                        "shirt_number": player.get("shirtNumber"),
+                        "rating": player.get("statistics", {}).get("rating"),
+                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                    }
+                    lineups["home"]["substitutes"].append(player_info)
         
-        # Formazione Casa
-        if "home" in lineup_data:
-            home = lineup_data["home"]
-            lineups["home"]["formation"] = home.get("formation", "")
+            # Formazione Trasferta
+            if "away" in lineup_data:
+                away = lineup_data["away"]
+                lineups["away"]["formation"] = away.get("formation", "")
             
-            # Giocatori titolari
-            for player in home.get("players", []):
-                player_info = {
-                    "id": player.get("player", {}).get("id"),
-                    "name": player.get("player", {}).get("name"),
-                    "position": player.get("player", {}).get("position", {}).get("name", ""),
-                    "shirt_number": player.get("shirtNumber"),
-                    "rating": player.get("statistics", {}).get("rating"),
-                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                }
-                lineups["home"]["players"].append(player_info)
+                # Giocatori titolari
+                for player in away.get("players", []):
+                    player_info = {
+                        "id": player.get("player", {}).get("id"),
+                        "name": player.get("player", {}).get("name"),
+                        "position": player.get("player", {}).get("position", {}).get("name", ""),
+                        "shirt_number": player.get("shirtNumber"),
+                        "rating": player.get("statistics", {}).get("rating"),
+                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                    }
+                    lineups["away"]["players"].append(player_info)
             
-            # Sostituti
-            for player in home.get("substitutions", []):
-                player_info = {
-                    "id": player.get("player", {}).get("id"),
-                    "name": player.get("player", {}).get("name"),
-                    "position": player.get("player", {}).get("position", {}).get("name", ""),
-                    "shirt_number": player.get("shirtNumber"),
-                    "rating": player.get("statistics", {}).get("rating"),
-                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                }
-                lineups["home"]["substitutes"].append(player_info)
-        
-        # Formazione Trasferta
-        if "away" in lineup_data:
-            away = lineup_data["away"]
-            lineups["away"]["formation"] = away.get("formation", "")
-            
-            # Giocatori titolari
-            for player in away.get("players", []):
-                player_info = {
-                    "id": player.get("player", {}).get("id"),
-                    "name": player.get("player", {}).get("name"),
-                    "position": player.get("player", {}).get("position", {}).get("name", ""),
-                    "shirt_number": player.get("shirtNumber"),
-                    "rating": player.get("statistics", {}).get("rating"),
-                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                }
-                lineups["away"]["players"].append(player_info)
-            
-            # Sostituti
-            for player in away.get("substitutions", []):
-                player_info = {
-                    "id": player.get("player", {}).get("id"),
-                    "name": player.get("player", {}).get("name"),
-                    "position": player.get("player", {}).get("position", {}).get("name", ""),
-                    "shirt_number": player.get("shirtNumber"),
-                    "rating": player.get("statistics", {}).get("rating"),
-                    "minutes_played": player.get("statistics", {}).get("minutesPlayed")
-                }
-                lineups["away"]["substitutes"].append(player_info)
+                # Sostituti
+                for player in away.get("substitutions", []):
+                    player_info = {
+                        "id": player.get("player", {}).get("id"),
+                        "name": player.get("player", {}).get("name"),
+                        "position": player.get("player", {}).get("position", {}).get("name", ""),
+                        "shirt_number": player.get("shirtNumber"),
+                        "rating": player.get("statistics", {}).get("rating"),
+                        "minutes_played": player.get("statistics", {}).get("minutesPlayed")
+                    }
+                    lineups["away"]["substitutes"].append(player_info)
                 
-    except Exception as e:
-        self.logger.warning(f"Errore nell'estrazione formazioni: {str(e)}")
+        except Exception as e:
+            self.logger.warning(f"Errore nell'estrazione formazioni: {str(e)}")
     
-    return lineups
+        return lineups
 
 def _extract_incidents(self, event_data: Dict) -> List[Dict[str, Any]]:
     """Estrae gli eventi chiave di una partita (goal, cartellini, etc.)."""
