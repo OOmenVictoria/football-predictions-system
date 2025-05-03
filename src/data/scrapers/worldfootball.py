@@ -1115,7 +1115,7 @@ class WorldFootballScraper(BaseScraper):
                 home_score = None
                 away_score = None
                 
-                if result and ':' in result, event_text)
+                if result and ':' in result:
                     if substitution_match:
                         substitution_in = substitution_match.group(1).strip()
                         substitution_out = substitution_match.group(2).strip()
