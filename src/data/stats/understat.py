@@ -960,3 +960,11 @@ def get_match_xg(match_id: int) -> Optional[Dict[str, Any]]:
     """
     scraper = UnderstatScraper()
     return scraper.get_match_stats(match_id)
+
+def get_scraper() -> UnderstatScraper:
+    """Restituisce un'istanza dello scraper Understat.
+    
+    Returns:
+        UnderstatScraper: Un'istanza configurata dello scraper Understat
+    """
+    return UnderstatScraper()
