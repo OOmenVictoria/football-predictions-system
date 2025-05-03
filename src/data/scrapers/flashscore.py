@@ -34,9 +34,11 @@ class FlashscoreScraper(BaseScraper):
     def __init__(self):
         """Inizializza lo scraper per Flashscore."""
         super().__init__(
+            name="flashscore",
             base_url=self.BASE_URL,
-            rate_limit=1.0,  # Una richiesta al secondo
-            user_agents_rotation=True
+            cache_ttl=3600,  # Cache per 1 ora
+            respect_robots=True,
+            delay_range=(1.0, 3.0)  # Una richiesta ogni 1-3 secondi
         )
     
     def get_matches_by_date(self, date: str) -> List[Dict[str, Any]]:
@@ -51,11 +53,11 @@ class FlashscoreScraper(BaseScraper):
         """
         try:
             formatted_date = format_date(date, input_format="%Y-%m-%d", output_format="%Y%m%d")
-            url = f"{self.BASE_URL}/matches/{formatted_date}/"
+            url = f"{self.base_url}/matches/{formatted_date}/"
             
             logger.info(f"Ottenimento partite per la data {date} da Flashscore")
-            html = self.get_html(url)
-            soup = self.parse_html(html)
+            html = self.get(url)
+            soup = self.parse(html)
             
             matches = []
             match_blocks = soup.select('div.event__match')
@@ -94,7 +96,7 @@ class FlashscoreScraper(BaseScraper):
                         'time': match_time,
                         'tournament': tournament,
                         'status': status,
-                        'url': f"{self.BASE_URL}/match/{match_id}/#/match-summary",
+                        'url': f"{self.base_url}/match/{match_id}/#/match-summary",
                         'date': date
                     }
                     
@@ -128,11 +130,11 @@ class FlashscoreScraper(BaseScraper):
             Dizionario con dettagli completi della partita.
         """
         try:
-            url = f"{self.BASE_URL}/match/{match_id}/#/match-summary"
+            url = f"{self.base_url}/match/{match_id}/#/match-summary"
             
             logger.info(f"Ottenimento dettagli per la partita {match_id}")
-            html = self.get_html(url)
-            soup = self.parse_html(html)
+            html = self.get(url)
+            soup = self.parse(html)
             
             # Estrazione informazioni di base
             home_team = soup.select_one('.team-name.home')
@@ -351,10 +353,10 @@ class FlashscoreScraper(BaseScraper):
             Dizionario con formazioni delle squadre.
         """
         try:
-            url = f"{self.BASE_URL}/match/{match_id}/#/lineups/lineups"
+            url = f"{self.base_url}/match/{match_id}/#/lineups/lineups"
             
-            html = self.get_html(url)
-            soup = self.parse_html(html)
+            html = self.get(url)
+            soup = self.parse(html)
             
             lineups = {
                 'home': {'starting': [], 'substitutes': []},
@@ -416,10 +418,10 @@ class FlashscoreScraper(BaseScraper):
             Dizionario con quote della partita.
         """
         try:
-            url = f"{self.BASE_URL}/match/{match_id}/#/odds-comparison/1x2"
+            url = f"{self.base_url}/match/{match_id}/#/odds-comparison/1x2"
             
-            html = self.get_html(url)
-            soup = self.parse_html(html)
+            html = self.get(url)
+            soup = self.parse(html)
             
             odds = {
                 '1x2': {},
@@ -450,9 +452,9 @@ class FlashscoreScraper(BaseScraper):
                         }
             
             # Estrazione quote Over/Under
-            url_ou = f"{self.BASE_URL}/match/{match_id}/#/odds-comparison/over-under"
-            html_ou = self.get_html(url_ou)
-            soup_ou = self.parse_html(html_ou)
+            url_ou = f"{self.base_url}/match/{match_id}/#/odds-comparison/over-under"
+            html_ou = self.get(url_ou)
+            soup_ou = self.parse(html_ou)
             
             odds_table_ou = soup_ou.select_one('.oddsTabSwithcer__panel--1')
             if odds_table_ou:
@@ -505,8 +507,8 @@ class FlashscoreScraper(BaseScraper):
             url = f"{team_url}/results/"
             
             logger.info(f"Ottenimento partite per la squadra {team_name}")
-            html = self.get_html(url)
-            soup = self.parse_html(html)
+            html = self.get(url)
+            soup = self.parse(html)
             
             matches = []
             match_blocks = soup.select('.event__match')
@@ -543,7 +545,7 @@ class FlashscoreScraper(BaseScraper):
                         'away_team': away_team.text.strip() if away_team else "",
                         'date': match_date,
                         'tournament': tournament,
-                        'url': f"{self.BASE_URL}/match/{match_id}/#/match-summary"
+                        'url': f"{self.base_url}/match/{match_id}/#/match-summary"
                     }
                     
                     if home_score is not None and away_score is not None:
@@ -565,198 +567,6 @@ class FlashscoreScraper(BaseScraper):
             logger.error(f"Errore nell'ottenere partite per la squadra {team_name}: {e}")
             return []
     
-    def get_league_matches(self, league_name: str, season: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Ottiene le partite di un campionato.
-        
-        Args:
-            league_name: Nome del campionato.
-            season: Stagione (es. "2023-2024").
-        
-        Returns:
-            Lista di partite del campionato.
-        """
-        try:
-            # Prima ottieni la pagina del campionato
-            league_url = self._search_league(league_name)
-            if not league_url:
-                logger.error(f"Campionato non trovato: {league_name}")
-                return []
-            
-            # Se specificata la stagione, modifica l'URL
-            if season:
-                league_url = f"{league_url}/archive/{season}/"
-            
-            # Recupera le partite dalla pagina del campionato
-            url = f"{league_url}/fixtures/"
-            
-            logger.info(f"Ottenimento partite per il campionato {league_name}")
-            html = self.get_html(url)
-            soup = self.parse_html(html)
-            
-            matches = []
-            match_blocks = soup.select('.event__match')
-            
-            for match in match_blocks:
-                try:
-                    match_id = match.get('id', '').replace('g_1_', '')
-                    
-                    # Estrazione squadre
-                    home_team = match.select_one('.event__participant--home')
-                    away_team = match.select_one('.event__participant--away')
-                    
-                    # Estrazione data
-                    date_header = match.find_previous('div', class_='event__header')
-                    date_text = date_header.select_one('.event__title').text.strip() if date_header else ""
-                    
-                    # Estrazione orario
-                    time_element = match.select_one('.event__time')
-                    match_time = time_element.text.strip() if time_element else ""
-                    
-                    # Stato della partita
-                    status_element = match.select_one('.event__stage')
-                    status = status_element.text.strip() if status_element else ""
-                    
-                    match_data = {
-                        'id': match_id,
-                        'home_team': home_team.text.strip() if home_team else "",
-                        'away_team': away_team.text.strip() if away_team else "",
-                        'date': date_text,
-                        'time': match_time,
-                        'status': status,
-                        'tournament': league_name,
-                        'url': f"{self.BASE_URL}/match/{match_id}/#/match-summary"
-                    }
-                    
-                    matches.append(match_data)
-                    
-                except Exception as e:
-                    logger.error(f"Errore nell'elaborazione di una partita: {e}")
-                    continue
-            
-            logger.info(f"Trovate {len(matches)} partite per il campionato {league_name}")
-            return matches
-            
-        except Exception as e:
-            logger.error(f"Errore nell'ottenere partite per il campionato {league_name}: {e}")
-            return []
-    
-    def get_team_stats(self, team_name: str) -> Dict[str, Any]:
-        """
-        Ottiene statistiche dettagliate per una squadra.
-        
-        Args:
-            team_name: Nome della squadra.
-        
-        Returns:
-            Dizionario con statistiche della squadra.
-        """
-        try:
-            # Prima ottieni la pagina della squadra
-            team_url = self._search_team(team_name)
-            if not team_url:
-                logger.error(f"Squadra non trovata: {team_name}")
-                return {}
-            
-            # Poi recupera le statistiche dalla pagina della squadra
-            url = f"{team_url}/standings/"
-            
-            logger.info(f"Ottenimento statistiche per la squadra {team_name}")
-            html = self.get_html(url)
-            soup = self.parse_html(html)
-            
-            stats = {
-                'team_name': team_name,
-                'leagues': []
-            }
-            
-            # Estrazione statistiche per ogni campionato
-            standings_blocks = soup.select('.tableWrapper')
-            
-            for block in standings_blocks:
-                try:
-                    # Nome del campionato
-                    league_header = block.find_previous('div', class_='tournament')
-                    league_name = league_header.select_one('.tournamentHeader__name').text.strip() if league_header else "Unknown"
-                    
-                    # Trova la riga della squadra
-                    team_row = block.select_one('tr.rowHighlighted')
-                    if not team_row:
-                        continue
-                    
-                    # Estrazione dati dalla riga
-                    position = team_row.select_one('.table__cell--rank')
-                    matches_played = team_row.select_one('.table__cell--matches_played')
-                    wins = team_row.select_one('.table__cell--wins')
-                    draws = team_row.select_one('.table__cell--draws')
-                    losses = team_row.select_one('.table__cell--losses')
-                    goals_for = team_row.select_one('.table__cell--goals_for')
-                    goals_against = team_row.select_one('.table__cell--goals_against')
-                    points = team_row.select_one('.table__cell--points')
-                    
-                    league_stats = {
-                        'league': league_name,
-                        'position': position.text.strip() if position else "",
-                        'matches_played': matches_played.text.strip() if matches_played else "",
-                        'wins': wins.text.strip() if wins else "",
-                        'draws': draws.text.strip() if draws else "",
-                        'losses': losses.text.strip() if losses else "",
-                        'goals_for': goals_for.text.strip() if goals_for else "",
-                        'goals_against': goals_against.text.strip() if goals_against else "",
-                        'points': points.text.strip() if points else ""
-                    }
-                    
-                    # Converti in numeri quando possibile
-                    for key, value in league_stats.items():
-                        if key != 'league' and value.isdigit():
-                            league_stats[key] = int(value)
-                    
-                    stats['leagues'].append(league_stats)
-                    
-                except Exception as e:
-                    logger.error(f"Errore nell'elaborazione di un campionato: {e}")
-                    continue
-            
-            # Recupera anche le ultime partite per form
-            try:
-                recent_matches = self.get_team_matches(team_name, limit=5)
-                form = []
-                
-                for match in recent_matches:
-                    is_home = match.get('home_team') == team_name
-                    score = match.get('score', {})
-                    
-                    if score:
-                        home_score = int(score.get('home', 0))
-                        away_score = int(score.get('away', 0))
-                        
-                        if is_home:
-                            if home_score > away_score:
-                                form.append('W')
-                            elif home_score < away_score:
-                                form.append('L')
-                            else:
-                                form.append('D')
-                        else:
-                            if away_score > home_score:
-                                form.append('W')
-                            elif away_score < home_score:
-                                form.append('L')
-                            else:
-                                form.append('D')
-                
-                stats['form'] = ''.join(form)
-                stats['recent_matches'] = recent_matches
-                
-            except Exception as e:
-                logger.error(f"Errore nell'ottenere la forma della squadra: {e}")
-            
-            return stats
-            
-        except Exception as e:
-            logger.error(f"Errore nell'ottenere statistiche per la squadra {team_name}: {e}")
-            return {'team_name': team_name, 'error': str(e)}
-    
     def _search_team(self, team_name: str) -> Optional[str]:
         """
         Cerca una squadra su Flashscore per nome.
@@ -772,16 +582,16 @@ class FlashscoreScraper(BaseScraper):
             normalized_name = team_name.lower().replace(' ', '-')
             
             # Prima prova la ricerca diretta (metodo più veloce)
-            direct_url = f"{self.BASE_URL}/team/{normalized_name}/"
+            direct_url = f"{self.base_url}/team/{normalized_name}/"
             response = self.session.head(direct_url)
             
             if response.status_code == 200:
                 return direct_url
             
             # Altrimenti usa la ricerca
-            search_url = f"{self.BASE_URL}/search/?q={team_name}"
-            html = self.get_html(search_url)
-            soup = self.parse_html(html)
+            search_url = f"{self.base_url}/search/?q={team_name}"
+            html = self.get(search_url)
+            soup = self.parse(html)
             
             # Cerca risultati di tipo "team"
             team_results = soup.select('.searchTeam')
@@ -789,137 +599,13 @@ class FlashscoreScraper(BaseScraper):
             if team_results:
                 team_link = team_results[0].select_one('a')
                 if team_link:
-                    return urljoin(self.BASE_URL, team_link['href'])
+                    return urljoin(self.base_url, team_link['href'])
             
             return None
             
         except Exception as e:
             logger.error(f"Errore nella ricerca della squadra {team_name}: {e}")
             return None
-    
-    def _search_league(self, league_name: str) -> Optional[str]:
-        """
-        Cerca un campionato su Flashscore per nome.
-        
-        Args:
-            league_name: Nome del campionato da cercare.
-        
-        Returns:
-            URL della pagina del campionato se trovata, altrimenti None.
-        """
-        try:
-            # Normalizza il nome del campionato
-            normalized_name = league_name.lower().replace(' ', '-')
-            
-            # Prima prova la ricerca diretta (metodo più veloce)
-            direct_url = f"{self.BASE_URL}/tournament/{normalized_name}/"
-            response = self.session.head(direct_url)
-            
-            if response.status_code == 200:
-                return direct_url
-            
-            # Altrimenti usa la ricerca
-            search_url = f"{self.BASE_URL}/search/?q={league_name}"
-            html = self.get_html(search_url)
-            soup = self.parse_html(html)
-            
-            # Cerca risultati di tipo "tournament"
-            league_results = soup.select('.searchResult__section--tournament .searchResult__item')
-            
-            if league_results:
-                league_link = league_results[0].select_one('a')
-                if league_link:
-                    return urljoin(self.BASE_URL, league_link['href'])
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Errore nella ricerca del campionato {league_name}: {e}")
-            return None
-    
-    def get_match_head_to_head(self, team1_name: str, team2_name: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Ottiene lo storico degli scontri diretti tra due squadre.
-        
-        Args:
-            team1_name: Nome della prima squadra.
-            team2_name: Nome della seconda squadra.
-            limit: Numero massimo di partite da restituire.
-        
-        Returns:
-            Lista di partite tra le due squadre.
-        """
-        try:
-            # Prima ottieni la pagina della prima squadra
-            team1_url = self._search_team(team1_name)
-            if not team1_url:
-                logger.error(f"Squadra non trovata: {team1_name}")
-                return []
-            
-            # Costruisci l'URL degli head-to-head
-            h2h_url = f"{team1_url}head-to-head/{team2_name.lower().replace(' ', '-')}/"
-            
-            logger.info(f"Ottenimento head-to-head per {team1_name} vs {team2_name}")
-            html = self.get_html(h2h_url)
-            soup = self.parse_html(html)
-            
-            matches = []
-            match_blocks = soup.select('.event__match')
-            
-            for i, match in enumerate(match_blocks):
-                if i >= limit:
-                    break
-                
-                try:
-                    match_id = match.get('id', '').replace('g_1_', '')
-                    
-                    # Estrazione squadre
-                    home_team = match.select_one('.event__participant--home')
-                    away_team = match.select_one('.event__participant--away')
-                    
-                    # Estrazione data
-                    date_element = match.find_previous('div', class_='event__time')
-                    match_date = date_element.text.strip() if date_element else ""
-                    
-                    # Estrazione competizione
-                    tournament_element = match.find_previous('div', class_='event__header')
-                    tournament = tournament_element.select_one('.event__title').text.strip() if tournament_element else ""
-                    
-                    # Risultato
-                    home_score_element = match.select_one('.event__score--home')
-                    away_score_element = match.select_one('.event__score--away')
-                    
-                    home_score = home_score_element.text.strip() if home_score_element else None
-                    away_score = away_score_element.text.strip() if away_score_element else None
-                    
-                    match_data = {
-                        'id': match_id,
-                        'home_team': home_team.text.strip() if home_team else "",
-                        'away_team': away_team.text.strip() if away_team else "",
-                        'date': match_date,
-                        'tournament': tournament,
-                        'url': f"{self.BASE_URL}/match/{match_id}/#/match-summary"
-                    }
-                    
-                    if home_score is not None and away_score is not None:
-                        match_data['score'] = {
-                            'home': home_score,
-                            'away': away_score
-                        }
-                    
-                    matches.append(match_data)
-                    
-                except Exception as e:
-                    logger.error(f"Errore nell'elaborazione di una partita: {e}")
-                    continue
-            
-            logger.info(f"Trovati {len(matches)} scontri diretti per {team1_name} vs {team2_name}")
-            return matches
-            
-        except Exception as e:
-            logger.error(f"Errore nell'ottenere head-to-head per {team1_name} vs {team2_name}: {e}")
-            return []
-
 
 # Istanza globale per un utilizzo più semplice
 flashscore_scraper = FlashscoreScraper()
