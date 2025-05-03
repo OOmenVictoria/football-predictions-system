@@ -377,6 +377,28 @@ def get(url: str, params: Dict = None, headers: Dict = None, timeout: int = 30,
         logger.error(f"Errore nella richiesta GET a {url}: {str(e)}")
         return None
 
+# Aggiungiamo la funzione get_with_retry come alias di get per mantenere compatibilità
+def get_with_retry(url: str, params: Dict = None, headers: Dict = None, timeout: int = 30, 
+                  max_retries: int = 3, use_cache: bool = True, cache_ttl: int = 3600,
+                  cache_name: str = "http_cache") -> Optional[requests.Response]:
+    """
+    Alias per la funzione get(). Effettua una richiesta GET con retry, cache e gestione errori.
+    
+    Args:
+        url: URL della richiesta
+        params: Parametri della query string
+        headers: Headers HTTP
+        timeout: Timeout in secondi
+        max_retries: Numero massimo di tentativi
+        use_cache: Se usare la cache
+        cache_ttl: Tempo di vita della cache in secondi
+        cache_name: Nome della cache
+        
+    Returns:
+        Oggetto Response o None in caso di errore
+    """
+    return get(url, params, headers, timeout, max_retries, use_cache, cache_ttl, cache_name)
+
 def post(url: str, data: Dict = None, json_data: Dict = None, headers: Dict = None, 
          timeout: int = 30, max_retries: int = 3) -> Optional[requests.Response]:
     """
