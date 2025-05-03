@@ -1844,3 +1844,11 @@ def get_match_stats(match_id: str, league_id: Optional[str] = None) -> Dict[str,
     """
     scraper = WhoScoredScraper()
     return scraper.get_match_statistics(match_id, league_id)
+
+def get_scraper() -> WhoScoredScraper:
+    """Restituisce un'istanza dello scraper WhoScored.
+    
+    Returns:
+        WhoScoredScraper: Un'istanza configurata dello scraper WhoScored
+    """
+    return WhoScoredScraper()
