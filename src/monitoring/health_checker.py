@@ -99,7 +99,7 @@ class HealthChecker:
         for service_name, url in self.external_services.items():
             try:
                 start_time = time.time()
-                response = make_request('GET', url, timeout=10, verify=True)
+                response = make_request(url, method='GET', timeout=10)
                 elapsed_time = time.time() - start_time
                 
                 status_code = response.status_code if response else 0
@@ -199,130 +199,6 @@ class HealthChecker:
         except Exception as e:
             logger.error(f"Errore nel controllo della freschezza dei dati: {e}")
             return {'status': 'error', 'message': str(e)}
-    
-    def run_comprehensive_check(self) -> Dict[str, Any]:
-        """
-        Esegue un controllo completo dello stato del sistema.
-        
-        Returns:
-            Report completo sullo stato del sistema
-        """
-        start_time = time.time()
-        
-        # Esegui tutti i controlli
-        system_health = self.check_system_resources()
-        services_health = self.check_external_services()
-        data_health = self.check_data_freshness()
-        errors_health = self.check_recent_errors()
-        workflow_health = self.check_workflow_executions()
-        
-        # Calcola stato generale
-        status_priority = {
-            'error': 3,
-            'critical': 2,
-            'warning': 1,
-            'ok': 0,
-            'unknown': 0
-        }
-        
-        component_statuses = [
-            system_health.get('cpu', {}).get('status', 'unknown'),
-            system_health.get('memory', {}).get('status', 'unknown'),
-            system_health.get('disk', {}).get('status', 'unknown'),
-            errors_health.get('status', 'unknown'),
-            workflow_health.get('status', 'unknown')
-        ]
-        
-        # Aggiungi stato dei servizi esterni
-        for service_status in services_health.values():
-            component_statuses.append(service_status.get('status', 'unknown'))
-        
-        # Aggiungi stato freschezza dati
-        for data_status in data_health.values():
-            if isinstance(data_status, dict):
-                component_statuses.append(data_status.get('status', 'unknown'))
-        
-        # Determina lo stato peggiore
-        worst_status = 'ok'
-        for status in component_statuses:
-            if status in status_priority and status_priority.get(status, 0) > status_priority.get(worst_status, 0):
-                worst_status = status
-        
-        # Prepara report completo
-        comprehensive_report = {
-            'status': worst_status,
-            'timestamp': datetime.now().isoformat(),
-            'check_duration_ms': round((time.time() - start_time) * 1000, 2),
-            'components': {
-                'system': system_health,
-                'external_services': services_health,
-                'data_freshness': data_health,
-                'recent_errors': errors_health,
-                'workflows': workflow_health
-            }
-        }
-        
-        # Salva report su Firebase
-        try:
-            self.health_ref.child('latest_report').set(comprehensive_report)
-            self.health_ref.child('reports').push(comprehensive_report)
-            
-            # Aggiorna timestamp ultimo controllo
-            self.last_check_time = datetime.now()
-            self.health_ref.child('last_check').set(self.last_check_time.isoformat())
-        except Exception as e:
-            logger.error(f"Errore nel salvare il report di salute su Firebase: {e}")
-        
-        return comprehensive_report
-    
-    def get_latest_report(self) -> Dict[str, Any]:
-        """
-        Ottiene l'ultimo report sullo stato del sistema.
-        
-        Returns:
-            Ultimo report disponibile
-        """
-        try:
-            latest_report = self.health_ref.child('latest_report').get()
-            return latest_report or {'status': 'unknown', 'message': 'Nessun report disponibile'}
-        except Exception as e:
-            logger.error(f"Errore nel recuperare l'ultimo report di salute: {e}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def schedule_checks(self, interval_minutes: int = 30):
-        """
-        Schedula controlli periodici (da chiamare da un processo separato).
-        
-        Args:
-            interval_minutes: Intervallo in minuti tra i controlli
-        """
-        logger.info(f"Avvio controlli di salute ogni {interval_minutes} minuti")
-        
-        try:
-            while True:
-                logger.info("Esecuzione controllo di salute del sistema")
-                self.run_comprehensive_check()
-                time.sleep(interval_minutes * 60)
-        except KeyboardInterrupt:
-            logger.info("Controlli di salute terminati dall'utente")
-        except Exception as e:
-            logger.error(f"Errore nei controlli di salute schedulati: {e}")
-
-
-# Funzione di utilità per verificare rapidamente lo stato del sistema
-def check_system_health(firebase_manager=None) -> Dict[str, Any]:
-    """
-    Verifica rapida dello stato del sistema.
-    
-    Args:
-        firebase_manager: Istanza del gestore Firebase (opzionale)
-        
-    Returns:
-        Report sullo stato del sistema
-    """
-    checker = HealthChecker(firebase_manager)
-    return checker.run_comprehensive_check()
-
     
     def check_recent_errors(self, hours: int = 24) -> Dict[str, Any]:
         """
@@ -454,3 +330,139 @@ def check_system_health(firebase_manager=None) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Errore nel controllo delle esecuzioni di workflow: {e}")
             return {'status': 'error', 'message': str(e)}
+    
+    def run_comprehensive_check(self) -> Dict[str, Any]:
+        """
+        Esegue un controllo completo dello stato del sistema.
+        
+        Returns:
+            Report completo sullo stato del sistema
+        """
+        start_time = time.time()
+        
+        # Esegui tutti i controlli
+        system_health = self.check_system_resources()
+        services_health = self.check_external_services()
+        data_health = self.check_data_freshness()
+        errors_health = self.check_recent_errors()
+        workflow_health = self.check_workflow_executions()
+        
+        # Calcola stato generale
+        status_priority = {
+            'error': 3,
+            'critical': 2,
+            'warning': 1,
+            'ok': 0,
+            'unknown': 0
+        }
+        
+        component_statuses = [
+            system_health.get('cpu', {}).get('status', 'unknown'),
+            system_health.get('memory', {}).get('status', 'unknown'),
+            system_health.get('disk', {}).get('status', 'unknown'),
+            errors_health.get('status', 'unknown'),
+            workflow_health.get('status', 'unknown')
+        ]
+        
+        # Aggiungi stato dei servizi esterni
+        for service_status in services_health.values():
+            component_statuses.append(service_status.get('status', 'unknown'))
+        
+        # Aggiungi stato freschezza dati
+        for data_status in data_health.values():
+            if isinstance(data_status, dict):
+                component_statuses.append(data_status.get('status', 'unknown'))
+        
+        # Determina lo stato peggiore
+        worst_status = 'ok'
+        for status in component_statuses:
+            if status in status_priority and status_priority.get(status, 0) > status_priority.get(worst_status, 0):
+                worst_status = status
+        
+        # Prepara report completo
+        comprehensive_report = {
+            'status': worst_status,
+            'timestamp': datetime.now().isoformat(),
+            'check_duration_ms': round((time.time() - start_time) * 1000, 2),
+            'components': {
+                'system': system_health,
+                'external_services': services_health,
+                'data_freshness': data_health,
+                'recent_errors': errors_health,
+                'workflows': workflow_health
+            }
+        }
+        
+        # Salva report su Firebase
+        try:
+            self.health_ref.child('latest_report').set(comprehensive_report)
+            self.health_ref.child('reports').push(comprehensive_report)
+            
+            # Aggiorna timestamp ultimo controllo
+            self.last_check_time = datetime.now()
+            self.health_ref.child('last_check').set(self.last_check_time.isoformat())
+        except Exception as e:
+            logger.error(f"Errore nel salvare il report di salute su Firebase: {e}")
+        
+        return comprehensive_report
+    
+    def get_latest_report(self) -> Dict[str, Any]:
+        """
+        Ottiene l'ultimo report sullo stato del sistema.
+        
+        Returns:
+            Ultimo report disponibile
+        """
+        try:
+            latest_report = self.health_ref.child('latest_report').get()
+            return latest_report or {'status': 'unknown', 'message': 'Nessun report disponibile'}
+        except Exception as e:
+            logger.error(f"Errore nel recuperare l'ultimo report di salute: {e}")
+            return {'status': 'error', 'message': str(e)}
+    
+    def schedule_checks(self, interval_minutes: int = 30):
+        """
+        Schedula controlli periodici (da chiamare da un processo separato).
+        
+        Args:
+            interval_minutes: Intervallo in minuti tra i controlli
+        """
+        logger.info(f"Avvio controlli di salute ogni {interval_minutes} minuti")
+        
+        try:
+            while True:
+                logger.info("Esecuzione controllo di salute del sistema")
+                self.run_comprehensive_check()
+                time.sleep(interval_minutes * 60)
+        except KeyboardInterrupt:
+            logger.info("Controlli di salute terminati dall'utente")
+        except Exception as e:
+            logger.error(f"Errore nei controlli di salute schedulati: {e}")
+
+
+# Funzione di utilità per verificare rapidamente lo stato del sistema
+def check_system_health(firebase_manager=None) -> Dict[str, Any]:
+    """
+    Verifica rapida dello stato del sistema.
+    
+    Args:
+        firebase_manager: Istanza del gestore Firebase (opzionale)
+        
+    Returns:
+        Report sullo stato del sistema
+    """
+    checker = HealthChecker(firebase_manager)
+    return checker.run_comprehensive_check()
+
+# Aggiungiamo run_health_check come alias di check_system_health per compatibilità
+def run_health_check(firebase_manager=None) -> Dict[str, Any]:
+    """
+    Alias di check_system_health per compatibilità.
+    
+    Args:
+        firebase_manager: Istanza del gestore Firebase (opzionale)
+        
+    Returns:
+        Report sullo stato del sistema
+    """
+    return check_system_health(firebase_manager)
