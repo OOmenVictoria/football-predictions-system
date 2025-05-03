@@ -425,7 +425,7 @@ class APIFootball:
             
         except Exception as e:
             logger.error(f"Errore nell'ottenere la classifica per {league_id}: {e}")
-            raise APIError(f"Errore API-Football: {e}")
+            raise APIError(f"Errore API football-data: {e}")
     
     @cached(ttl=3600)  # Cache per 1 ora
     def get_predictions(self, fixture_id: int) -> Dict[str, Any]:
@@ -699,3 +699,180 @@ def get_api():
         Istanza di APIFootball.
     """
     return api_football
+
+# Funzioni wrapper per l'importazione diretta
+
+def get_leagues(season: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Wrapper per api_football.get_leagues().
+    Ottiene l'elenco delle competizioni disponibili.
+    
+    Args:
+        season: Anno della stagione (es. 2023).
+        
+    Returns:
+        Lista delle competizioni disponibili.
+    """
+    try:
+        result = api_football.get_leagues(season)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_leagues(): {e}")
+        return []
+
+def get_fixtures(league_id: Optional[int] = None, **kwargs) -> List[Dict[str, Any]]:
+    """
+    Wrapper per api_football.get_fixtures().
+    Ottiene le partite in base ai parametri forniti.
+    
+    Args:
+        league_id: ID della competizione.
+        **kwargs: Parametri aggiuntivi (team_id, date, from_date, to_date, status, season).
+        
+    Returns:
+        Lista delle partite.
+    """
+    try:
+        result = api_football.get_fixtures(league_id=league_id, **kwargs)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_fixtures(): {e}")
+        return []
+
+def get_fixture_details(fixture_id: int) -> Dict[str, Any]:
+    """
+    Wrapper per api_football.get_fixture().
+    Ottiene informazioni dettagliate su una partita.
+    
+    Args:
+        fixture_id: ID della partita.
+        
+    Returns:
+        Dizionario con dettagli della partita.
+    """
+    try:
+        return api_football.get_fixture(fixture_id)
+    except Exception as e:
+        logger.error(f"Errore in get_fixture_details({fixture_id}): {e}")
+        return {}
+
+def get_fixture_statistics(fixture_id: int) -> Dict[str, Any]:
+    """
+    Wrapper per api_football.get_fixture_statistics().
+    Ottiene statistiche dettagliate per una partita.
+    
+    Args:
+        fixture_id: ID della partita.
+        
+    Returns:
+        Dizionario con statistiche della partita per entrambe le squadre.
+    """
+    try:
+        return api_football.get_fixture_statistics(fixture_id)
+    except Exception as e:
+        logger.error(f"Errore in get_fixture_statistics({fixture_id}): {e}")
+        return {}
+
+def get_team_info(team_id: int) -> Dict[str, Any]:
+    """
+    Wrapper per api_football.get_team().
+    Ottiene informazioni dettagliate su una squadra.
+    
+    Args:
+        team_id: ID della squadra.
+        
+    Returns:
+        Dizionario con dettagli della squadra.
+    """
+    try:
+        return api_football.get_team(team_id)
+    except Exception as e:
+        logger.error(f"Errore in get_team_info({team_id}): {e}")
+        return {}
+
+def get_team_statistics(team_id: int, league_id: int, season: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Wrapper per api_football.get_team_statistics().
+    Ottiene statistiche dettagliate per una squadra in una competizione.
+    
+    Args:
+        team_id: ID della squadra.
+        league_id: ID della competizione.
+        season: Anno della stagione.
+        
+    Returns:
+        Dizionario con statistiche della squadra.
+    """
+    try:
+        return api_football.get_team_statistics(team_id, league_id, season)
+    except Exception as e:
+        logger.error(f"Errore in get_team_statistics({team_id}, {league_id}): {e}")
+        return {}
+
+def get_team_fixtures(team_id: int, **kwargs) -> List[Dict[str, Any]]:
+    """
+    Wrapper per api_football.get_fixtures() filtrato per una squadra.
+    Ottiene le partite di una squadra.
+    
+    Args:
+        team_id: ID della squadra.
+        **kwargs: Parametri aggiuntivi (date, from_date, to_date, status, season).
+        
+    Returns:
+        Lista delle partite della squadra.
+    """
+    try:
+        result = api_football.get_fixtures(team_id=team_id, **kwargs)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_team_fixtures({team_id}): {e}")
+        return []
+
+def get_standings(league_id: int, season: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Wrapper per api_football.get_standings().
+    Ottiene la classifica per una competizione.
+    
+    Args:
+        league_id: ID della competizione.
+        season: Anno della stagione.
+        
+    Returns:
+        Lista di classifiche (possono esserci più gruppi/leghe).
+    """
+    try:
+        result = api_football.get_standings(league_id, season)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_standings({league_id}): {e}")
+        return []
+
+def get_head_to_head(team1_id: int, team2_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Wrapper per api_football.get_match_head_to_head().
+    Ottiene lo storico degli scontri diretti tra due squadre.
+    
+    Args:
+        team1_id: ID della prima squadra.
+        team2_id: ID della seconda squadra.
+        limit: Numero massimo di partite da restituire.
+        
+    Returns:
+        Lista di partite tra le due squadre.
+    """
+    try:
+        result = api_football.get_match_head_to_head(team1_id, team2_id, limit)
+        if isinstance(result, list):
+            return result
+        return []
+    except Exception as e:
+        logger.error(f"Errore in get_head_to_head({team1_id}, {team2_id}): {e}")
+        return []
