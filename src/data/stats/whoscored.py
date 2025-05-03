@@ -1800,3 +1800,47 @@ def _get_footystats_player_stats(self, player_name: str, team_name: str = "") ->
     except Exception as e:
         logger.error(f"Errore nell'estrazione dati giocatore FootyStats: {str(e)}")
         return {}
+
+# Funzioni wrapper per utilizzo semplificato
+
+def get_team_stats(team_id: str, league_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Ottiene statistiche di una squadra da WhoScored.
+    
+    Args:
+        team_id: ID squadra
+        league_id: ID del campionato (opzionale)
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = WhoScoredScraper()
+    return scraper.get_team_statistics(team_id, league_id)
+
+def get_player_stats(player_name: str, team_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Ottiene statistiche di un giocatore da WhoScored.
+    
+    Args:
+        player_name: Nome del giocatore
+        team_id: ID della squadra (opzionale)
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = WhoScoredScraper()
+    return scraper.get_player_statistics(player_name, team_id)
+
+def get_match_stats(match_id: str, league_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Ottiene statistiche di una partita da WhoScored.
+    
+    Args:
+        match_id: ID partita
+        league_id: ID del campionato (opzionale)
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = WhoScoredScraper()
+    return scraper.get_match_statistics(match_id, league_id)
