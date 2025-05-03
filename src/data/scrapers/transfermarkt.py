@@ -1053,7 +1053,7 @@ class TransfermarktScraper(BaseScraper):
                 currency = 'EUR'
             elif '£' in value_text:
                 currency = 'GBP'
-            elif ' in value_text:
+            elif '$' in value_text:
                 currency = 'USD'
             else:
                 currency = 'EUR'  # Default
