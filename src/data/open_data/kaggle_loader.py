@@ -631,3 +631,6 @@ def update_all_datasets() -> Dict[str, Dict[str, Any]]:
     """
     loader = get_kaggle_loader()
     return loader.update_all_datasets()
+
+# Alias per retrocompatibilità
+KaggleLoader = KaggleDataLoader
