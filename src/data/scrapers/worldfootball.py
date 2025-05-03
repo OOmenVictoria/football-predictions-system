@@ -87,6 +87,8 @@ class WorldFootballScraper(BaseScraper):
         }
         
         logger.info(f"WorldFootballScraper inizializzato con cache TTL: {cache_ttl}s")
+
+    # ---- Metodi principali per ottenere dati ---- #
     
     @cached(ttl=86400 * 7)  # 7 giorni
     def get_league_seasons(self, league_id: str) -> List[Dict[str, Any]]:
@@ -561,48 +563,110 @@ class WorldFootballScraper(BaseScraper):
                         if len(score_parts) >= 2:
                             home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
                             away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
-                
-                # Estrai link dettagli partita
-                match_id = None
-                match_link = cells[match_link_idx].select_one("a[href*='/matches/']") if match_link_idx < len(cells) else None
-                if match_link:
-                    match_url = match_link.get('href', '')
-                    match_id = self._extract_match_id(match_url)
-                
-                match_data = {
-                    'id': match_id,
-                    'date': match_datetime,
-                    'round': round_name,
-                    'league_id': league_id,
-                    'season': season,
-                    'home_team': {
-                        'name': home_team_name,
-                        'id': self._extract_team_id(home_team_link) if home_team_link else None
-                    },
-                    'away_team': {
-                        'name': away_team_name,
-                        'id': self._extract_team_id(away_team_link) if away_team_link else None
-                    }
-                }
-                
-                # Aggiungi punteggio se disponibile
-                if home_score is not None and away_score is not None:
-                    match_data['home_score'] = home_score
-                    match_data['away_score'] = away_score
-                    match_data['result'] = f"{home_score}:{away_score}"
                     
-                    # Determina il vincitore
-                    if home_score > away_score:
-                        match_data['winner'] = 'home'
-                    elif away_score > home_score:
-                        match_data['winner'] = 'away'
-                    else:
-                        match_data['winner'] = 'draw'
-                
-                matches.append(match_data)
-        
-        return matches
+                    # Estrai link dettagli partita
+                    match_id = None
+                    match_link_idx = 6  # Indice comune per il link alla partita
+                    match_link = cells[match_link_idx].select_one("a[href*='/matches/']") if match_link_idx < len(cells) else None
+                    if match_link:
+                        match_url = match_link.get('href', '')
+                        match_id = self._extract_match_id(match_url)
+                    
+                    match_data = {
+                        'date': match_datetime,
+                        'competition': competition,
+                        'home_team': {
+                            'name': home_team_name,
+                            'id': self._extract_team_id(home_team_link) if home_team_link else None
+                        },
+                        'away_team': {
+                            'name': away_team_name,
+                            'id': self._extract_team_id(away_team_link) if away_team_link else None
+                        },
+                        'team_id': team_id  # ID della squadra richiesta
+                    }
+                    
+                    # Aggiungi punteggio se disponibile
+                    if home_score is not None and away_score is not None:
+                        match_data['home_score'] = home_score
+                        match_data['away_score'] = away_score
+                        match_data['result'] = f"{home_score}:{away_score}"
+                    
+                    # Aggiungi ID partita se disponibile
+                    if match_id:
+                        match_data['id'] = match_id
+                    
+                    matches.append(match_data)
+            
+            return matches
+            
+        except Exception as e:
+            logger.error(f"Errore nel recupero partite squadra {team_id}: {str(e)}")
+            return []
     
+    @cached(ttl=86400 * 7)  # 7 giorni
+    def get_player_info(self, player_id: str) -> Dict[str, Any]:
+        """
+        Ottiene informazioni su un giocatore.
+        
+        Args:
+            player_id: ID del giocatore
+            
+        Returns:
+            Informazioni sul giocatore
+        """
+        logger.info(f"Recuperando informazioni giocatore: {player_id}")
+        
+        try:
+            url = f"{self.base_url}/players/{player_id}/"
+            soup = self.get_soup(url)
+            
+            # Estrai nome giocatore
+            title_elem = soup.select_one("div.content div.box h1")
+            player_name = title_elem.text.strip() if title_elem else ""
+            
+            # Estrai info dal riquadro principale
+            info_box = soup.select_one("div.data table.standard_tabelle")
+            
+            player_info = {
+                'id': player_id,
+                'name': player_name,
+                'url': url
+            }
+            
+            # Estrai dettagli aggiuntivi se disponibili
+            if info_box:
+                for row in info_box.select("tr"):
+                    cells = row.select("td")
+                    if len(cells) >= 2:
+                        label = cells[0].text.strip(':').strip().lower().replace(' ', '_')
+                        value = cells[1].text.strip()
+                        
+                        if label and value:
+                            player_info[label] = value
+            
+            # Estrai squadra attuale
+            current_team_box = soup.select_one("div.data div.portfolio a[href*='/teams/']")
+            if current_team_box:
+                team_name = current_team_box.text.strip()
+                team_url = current_team_box.get('href', '')
+                team_id = self._extract_team_id(team_url)
+                
+                if team_id:
+                    player_info['current_team'] = {
+                        'id': team_id,
+                        'name': team_name,
+                        'url': self.base_url + team_url if team_url.startswith('/') else team_url
+                    }
+            
+            return player_info
+            
+        except Exception as e:
+            logger.error(f"Errore nel recupero informazioni giocatore {player_id}: {str(e)}")
+            return {'id': player_id, 'error': str(e)}
+
+    # ---- Metodi di supporto per l'estrazione dati ---- #
+
     def _extract_match_header(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """
         Estrae le informazioni principali dall'intestazione di una pagina di partita.
@@ -656,7 +720,7 @@ class WorldFootballScraper(BaseScraper):
                     title_match = re.search(r'(.+?)\s*(-|:)\s*(.+)', title_text)
                     if title_match:
                         home_name = title_match.group(1).strip()
-                        away_name = title_match.group(3).strip()
+                        away_name = title_match.group(3].strip()
                         
                         match_info['home_team'] = {'name': home_name}
                         match_info['away_team'] = {'name': away_name}
@@ -842,6 +906,34 @@ class WorldFootballScraper(BaseScraper):
         except Exception:
             return None
     
+    def _extract_substitute_player(self, cell: BeautifulSoup) -> Dict[str, Any]:
+        """
+        Estrae informazioni su un giocatore dalla panchina.
+        
+        Args:
+            cell: Cella della tabella con info sul giocatore
+            
+        Returns:
+            Dati sul giocatore
+        """
+        try:
+            player_link = cell.select_one("a")
+            if not player_link:
+                return None
+                
+            player_url = player_link.get('href', '')
+            player_id = self._extract_player_id(player_url)
+            player_name = player_link.text.strip()
+            
+            return {
+                'id': player_id,
+                'name': player_name,
+                'url': self.base_url + player_url if player_url.startswith('/') else player_url
+            }
+            
+        except Exception:
+            return None
+    
     def _extract_match_events(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
         Estrae gli eventi di una partita (gol, cartellini, ecc.).
@@ -944,183 +1036,9 @@ class WorldFootballScraper(BaseScraper):
                 if event_type == 'substitution':
                     # Cerca il giocatore che entra e quello che esce
                     substitution_match = re.search(r'(.*?)\s+(?:for|für|per)\s+(.*?)', event_text)
-                        score_parts = result.split(':')
-                        if len(score_parts) >= 2:
-                            home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
-                            away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
-                    
-                    # Estrai link dettagli partita
-                    match_id = None
-                    match_link = cells[6].select_one("a[href*='/matches/']")
-                    if match_link:
-                        match_url = match_link.get('href', '')
-                        match_id = self._extract_match_id(match_url)
-                    
-                    match_data = {
-                        'date': match_datetime,
-                        'competition': competition,
-                        'home_team': {
-                            'name': home_team_name,
-                            'id': self._extract_team_id(home_team_link) if home_team_link else None
-                        },
-                        'away_team': {
-                            'name': away_team_name,
-                            'id': self._extract_team_id(away_team_link) if away_team_link else None
-                        },
-                        'team_id': team_id  # ID della squadra richiesta
-                    }
-                    
-                    # Aggiungi punteggio se disponibile
-                    if home_score is not None and away_score is not None:
-                        match_data['home_score'] = home_score
-                        match_data['away_score'] = away_score
-                        match_data['result'] = f"{home_score}:{away_score}"
-                    
-                    # Aggiungi ID partita se disponibile
-                    if match_id:
-                        match_data['id'] = match_id
-                    
-                    matches.append(match_data)
-            
-            return matches
-            
-        except Exception as e:
-            logger.error(f"Errore nel recupero partite squadra {team_id}: {str(e)}")
-            return []
-    
-    @cached(ttl=86400 * 7)  # 7 giorni
-    def get_player_info(self, player_id: str) -> Dict[str, Any]:
-        """
-        Ottiene informazioni su un giocatore.
-        
-        Args:
-            player_id: ID del giocatore
-            
-        Returns:
-            Informazioni sul giocatore
-        """
-        logger.info(f"Recuperando informazioni giocatore: {player_id}")
-        
-        try:
-            url = f"{self.base_url}/players/{player_id}/"
-            soup = self.get_soup(url)
-            
-            # Estrai nome giocatore
-            title_elem = soup.select_one("div.content div.box h1")
-            player_name = title_elem.text.strip() if title_elem else ""
-            
-            # Estrai info dal riquadro principale
-            info_box = soup.select_one("div.data table.standard_tabelle")
-            
-            player_info = {
-                'id': player_id,
-                'name': player_name,
-                'url': url
-            }
-            
-            # Estrai dettagli aggiuntivi se disponibili
-            if info_box:
-                for row in info_box.select("tr"):
-                    cells = row.select("td")
-                    if len(cells) >= 2:
-                        label = cells[0].text.strip(':').strip().lower().replace(' ', '_')
-                        value = cells[1].text.strip()
-                        
-                        if label and value:
-                            player_info[label] = value
-            
-            # Estrai squadra attuale
-            current_team_box = soup.select_one("div.data div.portfolio a[href*='/teams/']")
-            if current_team_box:
-                team_name = current_team_box.text.strip()
-                team_url = current_team_box.get('href', '')
-                team_id = self._extract_team_id(team_url)
-                
-                if team_id:
-                    player_info['current_team'] = {
-                        'id': team_id,
-                        'name': team_name,
-                        'url': self.base_url + team_url if team_url.startswith('/') else team_url
-                    }
-            
-            return player_info
-            
-        except Exception as e:
-            logger.error(f"Errore nel recupero informazioni giocatore {player_id}: {str(e)}")
-            return {'id': player_id, 'error': str(e)}
-    
-    # ---- Metodi di estrazione dati ---- #
-    
-    def _extract_matches_from_table(self, table: BeautifulSoup, round_name: str, league_id: str, season: str) -> List[Dict[str, Any]]:
-        """
-        Estrae partite da una tabella di giornata di campionato.
-        
-        Args:
-            table: Tag BeautifulSoup della tabella
-            round_name: Nome della giornata (es. 'Giornata 1')
-            league_id: ID del campionato
-            season: ID della stagione
-            
-        Returns:
-            Lista di partite
-        """
-        matches = []
-        
-        for row in table.select("tr:not(.thead)"):
-            cells = row.select("td")
-            if len(cells) < 5:
-                continue
-            
-            # Estrai data
-            date_text = cells[0].text.strip()
-            time_text = cells[1].text.strip() if len(cells) > 1 else ""
-            
-            # Converti data e ora in ISO format
-            match_datetime = None
-            if date_text:
-                try:
-                    if time_text:
-                        match_datetime = datetime.strptime(f"{date_text} {time_text}", '%d.%m.%Y %H:%M').isoformat()
-                    else:
-                        match_datetime = datetime.strptime(date_text, '%d.%m.%Y').isoformat()
-                except ValueError:
-                    pass
-            
-            # Estrai squadre
-            home_team_link = None
-            away_team_link = None
-            
-            # Controlla la struttura della tabella per determinare le celle corrette
-            home_idx = 2
-            away_idx = 4
-            result_idx = 3
-            match_link_idx = 5
-            
-            if len(cells) >= 6:
-                # Formato standard: data, ora, home, risultato, away, link
-                home_team_name = cells[home_idx].text.strip()
-                away_team_name = cells[away_idx].text.strip()
-                
-                # Se presenti i link alle squadre, estrai ID
-                home_link = cells[home_idx].select_one("a")
-                if home_link:
-                    home_team_link = home_link.get('href', '')
-                    
-                away_link = cells[away_idx].select_one("a")
-                if away_link:
-                    away_team_link = away_link.get('href', '')
-                
-                # Estrai risultato
-                result = cells[result_idx].text.strip()
-                home_score = None
-                away_score = None
-                
-                if result and ':' in result:
-                    # Analizza il risultato
-                    score_parts = result.split(':')
-                    if len(score_parts) >= 2:
-                        home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
-                        away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
+                    if substitution_match:
+                        substitution_in = substitution_match.group(1).strip()
+                        substitution_out = substitution_match.group(2).strip()
                 
                 # Crea oggetto evento
                 event = {
@@ -1219,7 +1137,118 @@ class WorldFootballScraper(BaseScraper):
             logger.error(f"Errore nell'estrazione statistiche: {str(e)}")
             return {}
     
-    # ---- Metodi di supporto ---- #
+    def _extract_matches_from_table(self, table: BeautifulSoup, round_name: str, league_id: str, season: str) -> List[Dict[str, Any]]:
+        """
+        Estrae partite da una tabella di giornata di campionato.
+        
+        Args:
+            table: Tag BeautifulSoup della tabella
+            round_name: Nome della giornata (es. 'Giornata 1')
+            league_id: ID del campionato
+            season: ID della stagione
+            
+        Returns:
+            Lista di partite
+        """
+        matches = []
+        
+        for row in table.select("tr:not(.thead)"):
+            cells = row.select("td")
+            if len(cells) < 5:
+                continue
+            
+            # Estrai data
+            date_text = cells[0].text.strip()
+            time_text = cells[1].text.strip() if len(cells) > 1 else ""
+            
+            # Converti data e ora in ISO format
+            match_datetime = None
+            if date_text:
+                try:
+                    if time_text:
+                        match_datetime = datetime.strptime(f"{date_text} {time_text}", '%d.%m.%Y %H:%M').isoformat()
+                    else:
+                        match_datetime = datetime.strptime(date_text, '%d.%m.%Y').isoformat()
+                except ValueError:
+                    pass
+            
+            # Estrai squadre
+            home_team_link = None
+            away_team_link = None
+            
+            # Controlla la struttura della tabella per determinare le celle corrette
+            home_idx = 2
+            away_idx = 4
+            result_idx = 3
+            match_link_idx = 5
+            
+            if len(cells) >= 6:
+                # Formato standard: data, ora, home, risultato, away, link
+                home_team_name = cells[home_idx].text.strip()
+                away_team_name = cells[away_idx].text.strip()
+                
+                # Se presenti i link alle squadre, estrai ID
+                home_link = cells[home_idx].select_one("a")
+                if home_link:
+                    home_team_link = home_link.get('href', '')
+                    
+                away_link = cells[away_idx].select_one("a")
+                if away_link:
+                    away_team_link = away_link.get('href', '')
+                
+                # Estrai risultato
+                result = cells[result_idx].text.strip()
+                home_score = None
+                away_score = None
+                
+                if result and ':' in result:
+                    score_parts = result.split(':')
+                    if len(score_parts) >= 2:
+                        home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
+                        away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
+                
+                # Estrai link dettagli partita
+                match_id = None
+                match_link = cells[match_link_idx].select_one("a[href*='/matches/']") if match_link_idx < len(cells) else None
+                if match_link:
+                    match_url = match_link.get('href', '')
+                    match_id = self._extract_match_id(match_url)
+                
+                match_data = {
+                    'id': match_id,
+                    'date': match_datetime,
+                    'round': round_name,
+                    'league_id': league_id,
+                    'season': season,
+                    'home_team': {
+                        'name': home_team_name,
+                        'id': self._extract_team_id(home_team_link) if home_team_link else None
+                    },
+                    'away_team': {
+                        'name': away_team_name,
+                        'id': self._extract_team_id(away_team_link) if away_team_link else None
+                    }
+                }
+                
+                # Aggiungi punteggio se disponibile
+                if home_score is not None and away_score is not None:
+                    match_data['home_score'] = home_score
+                    match_data['away_score'] = away_score
+                    match_data['result'] = f"{home_score}:{away_score}"
+                    
+                    # Determina il vincitore
+                    if home_score > away_score:
+                        match_data['winner'] = 'home'
+                    elif away_score > home_score:
+                        match_data['winner'] = 'away'
+                    else:
+                        match_data['winner'] = 'draw'
+                
+                matches.append(match_data)
+        
+        return matches
+
+    # ---- Metodi di supporto per l'estrazione ID ---- #
     
     def _get_league_path(self, league_id: str) -> str:
         """
@@ -1277,48 +1306,28 @@ class WorldFootballScraper(BaseScraper):
             return match.group(1)
             
         return None
+    
+    def _extract_match_id(self, url: Optional[str]) -> Optional[str]:
+        """
+        Estrae l'ID della partita da un URL.
+        
+        Args:
+            url: URL della partita
+            
+        Returns:
+            ID della partita o None se non trovato
+        """
+        if not url:
+            return None
+            
+        # Formato tipico: /matches/2023/08/25/2392123/
+        match = re.search(r'/matches/(?:.*?)/(\w+)/?', url)
+        if match:
+            return match.group(1)
+            
+        return None
 
-def _extract_player_id(self, url: Optional[str]) -> Optional[str]:
-    """
-    Estrae l'ID del giocatore da un URL.
-    
-    Args:
-        url: URL del giocatore
-        
-    Returns:
-        ID del giocatore o None se non trovato
-    """
-    if not url:
-        return None
-        
-    # Formato tipico: /players/joe-bloggs/123/
-    match = re.search(r'/players/(?:.*?)/(\w+)/?', url)
-    if match:
-        return match.group(1)
-        
-    return None
-    
-def _extract_match_id(self, url: Optional[str]) -> Optional[str]:
-    """
-    Estrae l'ID della partita da un URL.
-    
-    Args:
-        url: URL della partita
-        
-    Returns:
-        ID della partita o None se non trovato
-    """
-    if not url:
-        return None
-        
-    # Formato tipico: /matches/2023/08/25/2392123/
-    match = re.search(r'/matches/(?:.*?)/(\w+)/?', url)
-    if match:
-        return match.group(1)
-        
-    return None
-    
-# Funzioni di utilità globali
+# ---- Funzioni di utilità globali ---- #
 
 def get_league_seasons(league_id: str) -> List[Dict[str, Any]]:
     """
@@ -1426,189 +1435,4 @@ def get_player_info(player_id: str) -> Dict[str, Any]:
         Informazioni sul giocatore
     """
     scraper = WorldFootballScraper()
-    return scraper.get_player_info(player_id) partita
-            
-        Returns:
-            ID della partita o None se non trovato
-        """
-        if not url:
-            return None
-            
-        # Formato tipico: /matches/2023/08/25/2392123/
-        match = re.search(r'/matches/(?:.*?)/(\w+)/?', url)
-        if match:
-            return match.group(1)
-            
-        return None:
-                        score_parts = result.split(':')
-                        if len(score_parts) >= 2:
-                            home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
-                            away_score = int(score_parts[1].strip()) if score_parts[1].strip().isdigit() else None
-                    
-                    # Estrai link dettagli partita
-                    match_id = None
-                    match_link = cells[6].select_one("a[href*='/matches/']")
-                    if match_link:
-                        match_url = match_link.get('href', '')
-                        match_id = self._extract_match_id(match_url)
-                    
-                    match_data = {
-                        'date': match_datetime,
-                        'competition': competition,
-                        'home_team': {
-                            'name': home_team_name,
-                            'id': self._extract_team_id(home_team_link) if home_team_link else None
-                        },
-                        'away_team': {
-                            'name': away_team_name,
-                            'id': self._extract_team_id(away_team_link) if away_team_link else None
-                        },
-                        'team_id': team_id  # ID della squadra richiesta
-                    }
-                    
-                    # Aggiungi punteggio se disponibile
-                    if home_score is not None and away_score is not None:
-                        match_data['home_score'] = home_score
-                        match_data['away_score'] = away_score
-                        match_data['result'] = f"{home_score}:{away_score}"
-                    
-                    # Aggiungi ID partita se disponibile
-                    if match_id:
-                        match_data['id'] = match_id
-                    
-                    matches.append(match_data)
-            
-            return matches
-            
-        except Exception as e:
-            logger.error(f"Errore nel recupero partite squadra {team_id}: {str(e)}")
-            return []
-    
-    @cached(ttl=86400 * 7)  # 7 giorni
-    def get_player_info(self, player_id: str) -> Dict[str, Any]:
-        """
-        Ottiene informazioni su un giocatore.
-        
-        Args:
-            player_id: ID del giocatore
-            
-        Returns:
-            Informazioni sul giocatore
-        """
-        logger.info(f"Recuperando informazioni giocatore: {player_id}")
-        
-        try:
-            url = f"{self.base_url}/players/{player_id}/"
-            soup = self.get_soup(url)
-            
-            # Estrai nome giocatore
-            title_elem = soup.select_one("div.content div.box h1")
-            player_name = title_elem.text.strip() if title_elem else ""
-            
-            # Estrai info dal riquadro principale
-            info_box = soup.select_one("div.data table.standard_tabelle")
-            
-            player_info = {
-                'id': player_id,
-                'name': player_name,
-                'url': url
-            }
-            
-            # Estrai dettagli aggiuntivi se disponibili
-            if info_box:
-                for row in info_box.select("tr"):
-                    cells = row.select("td")
-                    if len(cells) >= 2:
-                        label = cells[0].text.strip(':').strip().lower().replace(' ', '_')
-                        value = cells[1].text.strip()
-                        
-                        if label and value:
-                            player_info[label] = value
-            
-            # Estrai squadra attuale
-            current_team_box = soup.select_one("div.data div.portfolio a[href*='/teams/']")
-            if current_team_box:
-                team_name = current_team_box.text.strip()
-                team_url = current_team_box.get('href', '')
-                team_id = self._extract_team_id(team_url)
-                
-                if team_id:
-                    player_info['current_team'] = {
-                        'id': team_id,
-                        'name': team_name,
-                        'url': self.base_url + team_url if team_url.startswith('/') else team_url
-                    }
-            
-            return player_info
-            
-        except Exception as e:
-            logger.error(f"Errore nel recupero informazioni giocatore {player_id}: {str(e)}")
-            return {'id': player_id, 'error': str(e)}
-    
-    # ---- Metodi di estrazione dati ---- #
-    
-    def _extract_matches_from_table(self, table: BeautifulSoup, round_name: str, league_id: str, season: str) -> List[Dict[str, Any]]:
-        """
-        Estrae partite da una tabella di giornata di campionato.
-        
-        Args:
-            table: Tag BeautifulSoup della tabella
-            round_name: Nome della giornata (es. 'Giornata 1')
-            league_id: ID del campionato
-            season: ID della stagione
-            
-        Returns:
-            Lista di partite
-        """
-        matches = []
-        
-        for row in table.select("tr:not(.thead)"):
-            cells = row.select("td")
-            if len(cells) < 5:
-                continue
-            
-            # Estrai data
-            date_text = cells[0].text.strip()
-            time_text = cells[1].text.strip() if len(cells) > 1 else ""
-            
-            # Converti data e ora in ISO format
-            match_datetime = None
-            if date_text:
-                try:
-                    if time_text:
-                        match_datetime = datetime.strptime(f"{date_text} {time_text}", '%d.%m.%Y %H:%M').isoformat()
-                    else:
-                        match_datetime = datetime.strptime(date_text, '%d.%m.%Y').isoformat()
-                except ValueError:
-                    pass
-            
-            # Estrai squadre
-            home_team_link = None
-            away_team_link = None
-            
-            # Controlla la struttura della tabella per determinare le celle corrette
-            home_idx = 2
-            away_idx = 4
-            result_idx = 3
-            match_link_idx = 5
-            
-            if len(cells) >= 6:
-                # Formato standard: data, ora, home, risultato, away, link
-                home_team_name = cells[home_idx].text.strip()
-                away_team_name = cells[away_idx].text.strip()
-                
-                # Se presenti i link alle squadre, estrai ID
-                home_link = cells[home_idx].select_one("a")
-                if home_link:
-                    home_team_link = home_link.get('href', '')
-                    
-                away_link = cells[away_idx].select_one("a")
-                if away_link:
-                    away_team_link = away_link.get('href', '')
-                
-                # Estrai risultato
-                result = cells[result_idx].text.strip()
-                home_score = None
-                away_score = None
-                
-                if result and ':' in result
+    return scraper.get_player_info(player_id)
