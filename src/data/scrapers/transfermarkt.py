@@ -1059,7 +1059,7 @@ class TransfermarktScraper(BaseScraper):
                 currency = 'EUR'  # Default
             
             # Rimuovi simboli non numerici tranne punti e virgole
-            value_text = value_text.replace(currency, '').replace('€', '').replace('£', '').replace(', '')
+            value_text = value_text.replace(currency, '').replace('€', '').replace('£', '').replace('$', '')
             
             # Estrai il valore numerico
             value = 0
