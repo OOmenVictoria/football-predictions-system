@@ -1539,3 +1539,38 @@ def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
     """
     scraper = SofaScoreScraper()
     return scraper.get_match_stats(match_id)
+
+def get_player_ratings(player_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene ratings di un giocatore da SofaScore.
+    
+    Args:
+        player_id: ID giocatore in SofaScore
+        
+    Returns:
+        Dizionario con ratings o None se errore
+    """
+    scraper = SofaScoreScraper()
+    player_stats = scraper.get_player_stats(player_id)
+    
+    if player_stats and "last_matches" in player_stats:
+        # Estrai solo i ratings dalle ultime partite
+        ratings = []
+        for match in player_stats["last_matches"]:
+            if "statistics" in match and "rating" in match["statistics"]:
+                match_rating = {
+                    "match_id": match.get("id"),
+                    "home_team": match.get("home_team", {}).get("name", ""),
+                    "away_team": match.get("away_team", {}).get("name", ""),
+                    "rating": match["statistics"]["rating"]
+                }
+                ratings.append(match_rating)
+        
+        return {
+            "player_id": player_id,
+            "source": "sofascore",
+            "last_updated": datetime.now().isoformat(),
+            "ratings": ratings
+        }
+    
+    return None
