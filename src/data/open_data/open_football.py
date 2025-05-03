@@ -663,3 +663,6 @@ def update_all_leagues(seasons: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     client = get_open_football_client()
     return client.update_all_leagues(seasons)
+
+# Alias per retrocompatibilità - per risolvere errori di importazione
+OpenFootballLoader = OpenFootballClient
