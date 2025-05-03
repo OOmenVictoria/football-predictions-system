@@ -953,4 +953,17 @@ def get_player_stats(player_id: str, season: str = "2023-2024") -> Optional[Dict
     scraper = FBrefScraper()
     return scraper.get_player_stats(player_id, season)
 
+def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche complete per una partita da FBref.
+    
+    Args:
+        match_id: Identificatore partita in FBref
+        
+    Returns:
+        Dizionario con statistiche o None se errore
+    """
+    scraper = FBrefScraper()
+    return scraper.get_match_stats(match_id)
+
     
