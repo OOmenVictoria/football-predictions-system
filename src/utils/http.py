@@ -31,6 +31,67 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 OPR/78.0.4093.184"
 ]
 
+# Definizione della classe APIError
+class APIError(Exception):
+    """
+    Eccezione sollevata in caso di errori nelle richieste API.
+    
+    Attributes:
+        url (str): URL che ha generato l'errore
+        method (str): Metodo HTTP utilizzato
+        status_code (int, optional): Codice di stato HTTP
+        response (requests.Response, optional): Oggetto di risposta
+        message (str): Messaggio di errore
+    """
+    
+    def __init__(self, message: str, url: str, method: str = "GET", 
+                status_code: Optional[int] = None, response: Optional[requests.Response] = None):
+        """
+        Inizializza un'eccezione APIError.
+        
+        Args:
+            message: Messaggio di errore
+            url: URL che ha generato l'errore
+            method: Metodo HTTP utilizzato
+            status_code: Codice di stato HTTP
+            response: Oggetto di risposta
+        """
+        self.url = url
+        self.method = method
+        self.status_code = status_code
+        self.response = response
+        self.message = message
+        super().__init__(self.message)
+    
+    def __str__(self):
+        """Rappresentazione testuale dell'errore."""
+        status_info = f" [Status: {self.status_code}]" if self.status_code else ""
+        return f"{self.method} {self.url}{status_info}: {self.message}"
+    
+    def get_details(self) -> Dict[str, Any]:
+        """
+        Restituisce dettagli dell'errore in formato strutturato.
+        
+        Returns:
+            Dizionario con i dettagli dell'errore
+        """
+        details = {
+            'message': self.message,
+            'url': self.url,
+            'method': self.method,
+        }
+        
+        if self.status_code:
+            details['status_code'] = self.status_code
+            
+        if self.response:
+            try:
+                details['response_text'] = self.response.text[:500]  # Primi 500 caratteri
+            except:
+                pass
+                
+        return details
+
 # Aggiungiamo la funzione make_request che è richiesta da altri moduli
 def make_request(
     url: str,
@@ -61,6 +122,9 @@ def make_request(
         
     Returns:
         Response object or None if failed
+        
+    Raises:
+        APIError: In case of request failure with detailed information
     """
     try:
         # Create session with retry
@@ -89,14 +153,50 @@ def make_request(
         # Log request info
         logger.debug(f"Request: {method} {url} - Status: {response.status_code}")
         
+        # Check if status code indicates an error
+        if 400 <= response.status_code < 600:
+            error_message = f"HTTP {response.status_code} Error"
+            try:
+                # Try to get more information from response
+                response_json = response.json()
+                if 'message' in response_json:
+                    error_message = response_json['message']
+                elif 'error' in response_json:
+                    error_message = response_json['error']
+            except:
+                # If cannot parse JSON, use text snippet
+                if response.text and len(response.text) > 0:
+                    error_message = response.text[:200]
+            
+            raise APIError(
+                message=error_message,
+                url=url,
+                method=method,
+                status_code=response.status_code,
+                response=response
+            )
+        
         return response
     
     except requests.RequestException as e:
-        logger.error(f"Request error: {str(e)} - URL: {url}")
-        return None
+        error_message = f"Request error: {str(e)}"
+        logger.error(f"{error_message} - URL: {url}")
+        raise APIError(
+            message=error_message,
+            url=url,
+            method=method
+        )
+    except APIError:
+        # Re-raise APIError unchanged
+        raise
     except Exception as e:
-        logger.error(f"Unexpected error during request: {str(e)} - URL: {url}")
-        return None
+        error_message = f"Unexpected error: {str(e)}"
+        logger.error(f"{error_message} - URL: {url}")
+        raise APIError(
+            message=error_message,
+            url=url,
+            method=method
+        )
 
 class HTTPCache:
     """
