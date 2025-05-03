@@ -820,3 +820,11 @@ def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
     """
     scraper = FootyStatsScraper()
     return scraper.get_match_stats(match_id)
+
+def get_scraper() -> FootyStatsScraper:
+    """Restituisce un'istanza dello scraper FootyStats.
+    
+    Returns:
+        FootyStatsScraper: Un'istanza configurata dello scraper FootyStats
+    """
+    return FootyStatsScraper()
