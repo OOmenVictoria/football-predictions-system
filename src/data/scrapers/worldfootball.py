@@ -1277,6 +1277,46 @@ class WorldFootballScraper(BaseScraper):
             return match.group(1)
             
         return None
+
+def _extract_player_id(self, url: Optional[str]) -> Optional[str]:
+    """
+    Estrae l'ID del giocatore da un URL.
+    
+    Args:
+        url: URL del giocatore
+        
+    Returns:
+        ID del giocatore o None se non trovato
+    """
+    if not url:
+        return None
+        
+    # Formato tipico: /players/joe-bloggs/123/
+    match = re.search(r'/players/(?:.*?)/(\w+)/?', url)
+    if match:
+        return match.group(1)
+        
+    return None
+    
+def _extract_match_id(self, url: Optional[str]) -> Optional[str]:
+    """
+    Estrae l'ID della partita da un URL.
+    
+    Args:
+        url: URL della partita
+        
+    Returns:
+        ID della partita o None se non trovato
+    """
+    if not url:
+        return None
+        
+    # Formato tipico: /matches/2023/08/25/2392123/
+    match = re.search(r'/matches/(?:.*?)/(\w+)/?', url)
+    if match:
+        return match.group(1)
+        
+    return None
     
 # Funzioni di utilità globali
 
