@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from src.data.scrapers.base_scraper import BaseScraper
-from src.utils.time_utils import parse_date, format_date
+from src.utils.time_utils import parse_date
 
 # Configurazione logger
 logger = logging.getLogger(__name__)
@@ -52,7 +52,19 @@ class FlashScoreScraper(BaseScraper):
             Lista di partite programmate per la data specificata.
         """
         try:
-            formatted_date = format_date(date, input_format="%Y-%m-%d", output_format="%Y%m%d")
+            # Converti la data nel formato richiesto da Flashscore (YYYYMMDD)
+            if isinstance(date, str):
+                try:
+                    date_obj = datetime.datetime.strptime(date, "%Y-%m-%d")
+                    formatted_date = date_obj.strftime("%Y%m%d")
+                except ValueError:
+                    # Gestisci formato data non valido
+                    logger.error(f"Formato data non valido: {date}, deve essere 'YYYY-MM-DD'")
+                    return []
+            else:
+                logger.error(f"Formato data non valido: {date}, deve essere una stringa 'YYYY-MM-DD'")
+                return []
+                
             url = f"{self.base_url}/matches/{formatted_date}/"
             
             logger.info(f"Ottenimento partite per la data {date} da Flashscore")
@@ -567,6 +579,198 @@ class FlashScoreScraper(BaseScraper):
             logger.error(f"Errore nell'ottenere partite per la squadra {team_name}: {e}")
             return []
     
+    def get_league_matches(self, league_name: str, season: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Ottiene le partite di un campionato.
+        
+        Args:
+            league_name: Nome del campionato.
+            season: Stagione (es. "2023-2024").
+        
+        Returns:
+            Lista di partite del campionato.
+        """
+        try:
+            # Prima ottieni la pagina del campionato
+            league_url = self._search_league(league_name)
+            if not league_url:
+                logger.error(f"Campionato non trovato: {league_name}")
+                return []
+            
+            # Se specificata la stagione, modifica l'URL
+            if season:
+                league_url = f"{league_url}/archive/{season}/"
+            
+            # Recupera le partite dalla pagina del campionato
+            url = f"{league_url}/fixtures/"
+            
+            logger.info(f"Ottenimento partite per il campionato {league_name}")
+            html = self.get(url)
+            soup = self.parse(html)
+            
+            matches = []
+            match_blocks = soup.select('.event__match')
+            
+            for match in match_blocks:
+                try:
+                    match_id = match.get('id', '').replace('g_1_', '')
+                    
+                    # Estrazione squadre
+                    home_team = match.select_one('.event__participant--home')
+                    away_team = match.select_one('.event__participant--away')
+                    
+                    # Estrazione data
+                    date_header = match.find_previous('div', class_='event__header')
+                    date_text = date_header.select_one('.event__title').text.strip() if date_header else ""
+                    
+                    # Estrazione orario
+                    time_element = match.select_one('.event__time')
+                    match_time = time_element.text.strip() if time_element else ""
+                    
+                    # Stato della partita
+                    status_element = match.select_one('.event__stage')
+                    status = status_element.text.strip() if status_element else ""
+                    
+                    match_data = {
+                        'id': match_id,
+                        'home_team': home_team.text.strip() if home_team else "",
+                        'away_team': away_team.text.strip() if away_team else "",
+                        'date': date_text,
+                        'time': match_time,
+                        'status': status,
+                        'tournament': league_name,
+                        'url': f"{self.base_url}/match/{match_id}/#/match-summary"
+                    }
+                    
+                    matches.append(match_data)
+                    
+                except Exception as e:
+                    logger.error(f"Errore nell'elaborazione di una partita: {e}")
+                    continue
+            
+            logger.info(f"Trovate {len(matches)} partite per il campionato {league_name}")
+            return matches
+            
+        except Exception as e:
+            logger.error(f"Errore nell'ottenere partite per il campionato {league_name}: {e}")
+            return []
+    
+    def get_team_stats(self, team_name: str) -> Dict[str, Any]:
+        """
+        Ottiene statistiche dettagliate per una squadra.
+        
+        Args:
+            team_name: Nome della squadra.
+        
+        Returns:
+            Dizionario con statistiche della squadra.
+        """
+        try:
+            # Prima ottieni la pagina della squadra
+            team_url = self._search_team(team_name)
+            if not team_url:
+                logger.error(f"Squadra non trovata: {team_name}")
+                return {}
+            
+            # Poi recupera le statistiche dalla pagina della squadra
+            url = f"{team_url}/standings/"
+            
+            logger.info(f"Ottenimento statistiche per la squadra {team_name}")
+            html = self.get(url)
+            soup = self.parse(html)
+            
+            stats = {
+                'team_name': team_name,
+                'leagues': []
+            }
+            
+            # Estrazione statistiche per ogni campionato
+            standings_blocks = soup.select('.tableWrapper')
+            
+            for block in standings_blocks:
+                try:
+                    # Nome del campionato
+                    league_header = block.find_previous('div', class_='tournament')
+                    league_name = league_header.select_one('.tournamentHeader__name').text.strip() if league_header else "Unknown"
+                    
+                    # Trova la riga della squadra
+                    team_row = block.select_one('tr.rowHighlighted')
+                    if not team_row:
+                        continue
+                    
+                    # Estrazione dati dalla riga
+                    position = team_row.select_one('.table__cell--rank')
+                    matches_played = team_row.select_one('.table__cell--matches_played')
+                    wins = team_row.select_one('.table__cell--wins')
+                    draws = team_row.select_one('.table__cell--draws')
+                    losses = team_row.select_one('.table__cell--losses')
+                    goals_for = team_row.select_one('.table__cell--goals_for')
+                    goals_against = team_row.select_one('.table__cell--goals_against')
+                    points = team_row.select_one('.table__cell--points')
+                    
+                    league_stats = {
+                        'league': league_name,
+                        'position': position.text.strip() if position else "",
+                        'matches_played': matches_played.text.strip() if matches_played else "",
+                        'wins': wins.text.strip() if wins else "",
+                        'draws': draws.text.strip() if draws else "",
+                        'losses': losses.text.strip() if losses else "",
+                        'goals_for': goals_for.text.strip() if goals_for else "",
+                        'goals_against': goals_against.text.strip() if goals_against else "",
+                        'points': points.text.strip() if points else ""
+                    }
+                    
+                    # Converti in numeri quando possibile
+                    for key, value in league_stats.items():
+                        if key != 'league' and value.isdigit():
+                            league_stats[key] = int(value)
+                    
+                    stats['leagues'].append(league_stats)
+                    
+                except Exception as e:
+                    logger.error(f"Errore nell'elaborazione di un campionato: {e}")
+                    continue
+            
+            # Recupera anche le ultime partite per form
+            try:
+                recent_matches = self.get_team_matches(team_name, limit=5)
+                form = []
+                
+                for match in recent_matches:
+                    is_home = match.get('home_team') == team_name
+                    score = match.get('score', {})
+                    
+                    if score:
+                        home_score = int(score.get('home', 0))
+                        away_score = int(score.get('away', 0))
+                        
+                        if is_home:
+                            if home_score > away_score:
+                                form.append('W')
+                            elif home_score < away_score:
+                                form.append('L')
+                            else:
+                                form.append('D')
+                        else:
+                            if away_score > home_score:
+                                form.append('W')
+                            elif away_score < home_score:
+                                form.append('L')
+                            else:
+                                form.append('D')
+                
+                stats['form'] = ''.join(form)
+                stats['recent_matches'] = recent_matches
+                
+            except Exception as e:
+                logger.error(f"Errore nell'ottenere la forma della squadra: {e}")
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Errore nell'ottenere statistiche per la squadra {team_name}: {e}")
+            return {'team_name': team_name, 'error': str(e)}
+    
     def _search_team(self, team_name: str) -> Optional[str]:
         """
         Cerca una squadra su Flashscore per nome.
@@ -606,6 +810,47 @@ class FlashScoreScraper(BaseScraper):
         except Exception as e:
             logger.error(f"Errore nella ricerca della squadra {team_name}: {e}")
             return None
+    
+    def _search_league(self, league_name: str) -> Optional[str]:
+        """
+        Cerca un campionato su Flashscore per nome.
+        
+        Args:
+            league_name: Nome del campionato da cercare.
+        
+        Returns:
+            URL della pagina del campionato se trovata, altrimenti None.
+        """
+        try:
+            # Normalizza il nome del campionato
+            normalized_name = league_name.lower().replace(' ', '-')
+            
+            # Prima prova la ricerca diretta (metodo più veloce)
+            direct_url = f"{self.base_url}/tournament/{normalized_name}/"
+            response = self.session.head(direct_url)
+            
+            if response.status_code == 200:
+                return direct_url
+            
+            # Altrimenti usa la ricerca
+            search_url = f"{self.base_url}/search/?q={league_name}"
+            html = self.get(search_url)
+            soup = self.parse(html)
+            
+            # Cerca risultati di tipo "tournament"
+            league_results = soup.select('.searchResult__section--tournament .searchResult__item')
+            
+            if league_results:
+                league_link = league_results[0].select_one('a')
+                if league_link:
+                    return urljoin(self.base_url, league_link['href'])
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Errore nella ricerca del campionato {league_name}: {e}")
+            return None
+
 
 # Istanza globale per un utilizzo più semplice
 flashscore_scraper = FlashScoreScraper()
@@ -615,6 +860,6 @@ def get_scraper():
     Ottiene l'istanza globale dello scraper.
     
     Returns:
-        Istanza di FlashscoreScraper.
+        Istanza di FlashScoreScraper.
     """
     return flashscore_scraper
