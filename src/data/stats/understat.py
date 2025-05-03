@@ -934,3 +934,16 @@ def get_team_xg(team_id: int, season: str = "2023") -> Optional[Dict[str, Any]]:
     """
     scraper = UnderstatScraper()
     return scraper.get_team_stats(team_id, season)
+
+def get_player_xg(player_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche Expected Goals (xG) di un giocatore da Understat.
+    
+    Args:
+        player_id: Identificatore giocatore in Understat
+        
+    Returns:
+        Dizionario con statistiche xG del giocatore o None se errore
+    """
+    scraper = UnderstatScraper()
+    return scraper.get_player_stats(player_id)
