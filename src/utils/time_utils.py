@@ -72,6 +72,9 @@ def format_date(dt: Optional[Union[datetime, date, str]] = None,
         logger.error(f"Errore formattazione data: {str(e)}")
         return str(dt)
 
+# Alias per compatibilità con codice che utilizza date_to_str
+date_to_str = format_date
+
 def format_datetime(dt: Optional[Union[datetime, str]] = None,
                     format_str: str = "%Y-%m-%d %H:%M:%S",
                     locale: str = "it") -> str:
