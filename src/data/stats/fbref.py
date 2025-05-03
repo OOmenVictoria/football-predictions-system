@@ -966,4 +966,12 @@ def get_match_stats(match_id: str) -> Optional[Dict[str, Any]]:
     scraper = FBrefScraper()
     return scraper.get_match_stats(match_id)
 
+def get_scraper() -> FBrefScraper:
+    """Restituisce un'istanza dello scraper FBref.
+    
+    Returns:
+        FBrefScraper: Un'istanza configurata dello scraper FBref
+    """
+    return FBrefScraper()
+
     
