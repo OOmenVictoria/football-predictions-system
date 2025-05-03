@@ -943,7 +943,7 @@ class WorldFootballScraper(BaseScraper):
                 
                 if event_type == 'substitution':
                     # Cerca il giocatore che entra e quello che esce
-                    substitution_match = re.search(r'(.*?)\s+(?:for|für|per)\s+(.*?):
+                    substitution_match = re.search(r'(.*?)\s+(?:for|für|per)\s+(.*?)', event_text)
                         score_parts = result.split(':')
                         if len(score_parts) >= 2:
                             home_score = int(score_parts[0].strip()) if score_parts[0].strip().isdigit() else None
