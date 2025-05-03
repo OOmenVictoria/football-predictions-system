@@ -920,3 +920,17 @@ class UnderstatScraper(BaseScraper):
             return distance
         except Exception:
             return 0.0
+
+def get_team_xg(team_id: int, season: str = "2023") -> Optional[Dict[str, Any]]:
+    """
+    Ottiene statistiche Expected Goals (xG) di una squadra da Understat.
+    
+    Args:
+        team_id: Identificatore squadra in Understat
+        season: Stagione (anno, es: "2023" per 2023/2024)
+        
+    Returns:
+        Dizionario con statistiche xG o None se errore
+    """
+    scraper = UnderstatScraper()
+    return scraper.get_team_stats(team_id, season)
