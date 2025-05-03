@@ -755,28 +755,28 @@ class SofaScoreScraper(BaseScraper):
         return stats
     
     def _extract_lineups(self, event_data: Dict) -> Dict[str, Any]:
-    """Estrae le formazioni di una partita."""
-    lineups = {
-        "home": {
-            "formation": "",
-            "players": [],
-            "substitutes": []
-        },
-        "away": {
-            "formation": "",
-            "players": [],
-            "substitutes": []
+        """Estrae le formazioni di una partita."""
+        lineups = {
+            "home": {
+                "formation": "",
+                "players": [],
+                "substitutes": []
+            },
+            "away": {
+                "formation": "",
+                "players": [],
+                "substitutes": []
+            }
         }
-    }
-    
-    try:
-        # Cerca formazioni in strutture diverse
-        if "lineups" in event_data:
-            lineup_data = event_data["lineups"]
-        elif "lineupsState" in event_data and "lineups" in event_data["lineupsState"]:
-            lineup_data = event_data["lineupsState"]["lineups"]
-        else:
-            return lineups
+        
+        try:
+            # Cerca formazioni in strutture diverse
+            if "lineups" in event_data:
+                lineup_data = event_data["lineups"]
+            elif "lineupsState" in event_data and "lineups" in event_data["lineupsState"]:
+                lineup_data = event_data["lineupsState"]["lineups"]
+            else:
+                return lineups
         
         # Formazione Casa
         if "home" in lineup_data:
