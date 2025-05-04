@@ -64,7 +64,7 @@ class SoccerwayScraper(BaseScraper):
             "europa_league": "/international/europe/uefa-europa-league/"
         })
         
-        logger.info(f"SoccerwayScraper inizializzato con base URL: {self.base_urls}")
+        logger.info(f"SoccerwayScraper inizializzato con base URL: {self.base_url}")
     
     @cached(ttl=3600 * 12)  # 12 ore
     def search(self, query: str, category: str = "all") -> List[Dict[str, Any]]:
