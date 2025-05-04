@@ -1,4 +1,3 @@
-```python
 """
 Processore per i dati Expected Goals (xG).
 Questo modulo fornisce funzionalità per elaborare, normalizzare e arricchire
@@ -88,7 +87,7 @@ class XGProcessor:
         home_team_id = match_data.get('home_team_id', '')
         away_team_id = match_data.get('away_team_id', '')
         home_team = match_data.get('home_team', '')
-        away_team = match_data.get('away', '')
+        away_team = match_data.get('away_team', '')
         
         # Normalizza e combina i dati
         combined_xg = self._combine_xg_data(all_xg_data, home_team_id, away_team_id)
