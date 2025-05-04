@@ -2223,8 +2223,7 @@ class MatchProcessor:
             return False
 
 
-# Istanza globale per un utilizzo più semplice
-match_processor = MatchProcessor()
+_match_processor = None
 
 def get_processor():
     """
@@ -2233,5 +2232,7 @@ def get_processor():
     Returns:
         Istanza di MatchProcessor.
     """
-    return match_processor
-    
+    global _match_processor
+    if _match_processor is None:
+        _match_processor = MatchProcessor()
+    return _match_processor
