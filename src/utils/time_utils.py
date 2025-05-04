@@ -415,3 +415,46 @@ def get_date_range(date_str: str, range_type: str = "week") -> Tuple[datetime, d
 def get_current_datetime(tz: str = "Europe/Rome") -> datetime:
     """Alias per compatibilità con codice esistente"""
     return get_datetime_now(tz)
+
+# Aggiungi alla fine del file time_utils.py
+
+def get_match_status(match_datetime: Union[datetime, str], 
+                     match_duration: int = 90, 
+                     locale: str = "it") -> str:
+    """
+    Determina lo stato di una partita basato sulla data/ora.
+    
+    Args:
+        match_datetime: Datetime della partita (stringa ISO o datetime)
+        match_duration: Durata della partita in minuti (default: 90)
+        locale: Locale per la formattazione (default: italiano)
+        
+    Returns:
+        Stato della partita ("scheduled", "in_progress", "finished")
+    """
+    # Converti stringa in datetime se necessario
+    if isinstance(match_datetime, str):
+        dt = parse_date(match_datetime)
+        if not dt:
+            return "unknown"
+    else:
+        dt = match_datetime
+    
+    # Assicura che il datetime abbia timezone
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    
+    # Ottieni datetime attuale
+    now = datetime.now(timezone.utc)
+    
+    # Confronta i tempi
+    if dt > now:
+        return "scheduled"  # Partita futura
+    
+    # Calcola quando dovrebbe finire la partita (+ tempo supplementare)
+    end_time = dt + timedelta(minutes=match_duration + 15)  # 90 minuti + 15 minuti extra time
+    
+    if now < end_time:
+        return "in_progress"  # Partita in corso
+    else:
+        return "finished"    # Partita terminata
