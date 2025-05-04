@@ -63,24 +63,35 @@ def collect_data(args: argparse.Namespace) -> bool:
         # Get leagues to collect data for
         league_ids = args.leagues.split(',') if args.leagues else None
         
-        # Get the data limit
-        limit = args.limit if args.limit else get_setting('data.collection.match_limit', 100)
-        
         # Collect data for each league
         if league_ids:
             for league_id in league_ids:
                 logger.info(f"Collecting data for league: {league_id}")
-                result = collect_league_data(league_id, limit=limit)
+                result = collect_league_data(league_id)
                 
-                if result and 'matches_collected' in result:
-                    logger.info(f"Collected {result['matches_collected']} matches for league {league_id}")
+                if result and 'matches' in result:
+                    logger.info(f"Collected {result['matches'].get('count', 0)} matches for league {league_id}")
                 else:
                     logger.warning(f"No data collected for league {league_id}")
         else:
             # Collect data for all active leagues
             db = FirebaseManager()
             leagues_ref = db.get_reference("config/leagues")
-            leagues = leagues_ref.get()
+            
+            try:
+                leagues = leagues_ref.get()
+            except Exception as e:
+                if "object of type 'Reference' has no len()" in str(e):
+                    # Handle the Reference object issue by directly accessing its value
+                    leagues = None
+                    try:
+                        data = leagues_ref.get()
+                        if isinstance(data, dict):
+                            leagues = data
+                    except:
+                        logger.error("Unable to load league data from Firebase")
+                else:
+                    raise
             
             if not leagues:
                 logger.error("No leagues found in database")
@@ -99,10 +110,10 @@ def collect_data(args: argparse.Namespace) -> bool:
             
             for league_id in active_leagues:
                 logger.info(f"Collecting data for league: {league_id}")
-                result = collect_league_data(league_id, limit=limit)
+                result = collect_league_data(league_id)
                 
-                if result and 'matches_collected' in result:
-                    logger.info(f"Collected {result['matches_collected']} matches for league {league_id}")
+                if result and 'matches' in result:
+                    logger.info(f"Collected {result['matches'].get('count', 0)} matches for league {league_id}")
                 else:
                     logger.warning(f"No data collected for league {league_id}")
         
