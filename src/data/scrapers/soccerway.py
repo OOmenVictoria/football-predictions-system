@@ -33,8 +33,12 @@ class SoccerwayScraper(BaseScraper):
     
     def __init__(self):
         """Inizializza lo scraper Soccerway."""
-        super().__init__()
-        self.base_url = "https://int.soccerway.com"
+        # Fix: Passa i parametri richiesti a super().__init__()
+        super().__init__(
+            name="soccerway",
+            base_url="https://int.soccerway.com"
+        )
+        
         self.search_url = "https://int.soccerway.com/search/?"
         self.matches_url = "https://int.soccerway.com/matches/"
         self.teams_url = "https://int.soccerway.com/teams/"
@@ -60,7 +64,7 @@ class SoccerwayScraper(BaseScraper):
             "europa_league": "/international/europe/uefa-europa-league/"
         })
         
-        logger.info(f"SoccerwayScraper inizializzato con base URL: {self.base_url}")
+        logger.info(f"SoccerwayScraper inizializzato con base URL: {self.base_urls}")
     
     @cached(ttl=3600 * 12)  # 12 ore
     def search(self, query: str, category: str = "all") -> List[Dict[str, Any]]:
