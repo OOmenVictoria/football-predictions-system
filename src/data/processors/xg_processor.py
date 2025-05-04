@@ -15,9 +15,8 @@ from src.utils.cache import cached
 from src.utils.database import FirebaseManager
 from src.config.settings import get_setting
 from src.data.stats.understat import get_match_xg as get_understat_xg
-from src.data.stats.sofascore import get_match_xg as get_sofascore_xg
 from src.data.stats.whoscored import get_match_statistics
-# REMOVED: from src.data.stats.fbref import get_match_xg as get_fbref_xg  # This doesn't exist!
+# REMOVED problematic imports - we'll use dynamic imports in the method
 
 logger = logging.getLogger(__name__)
 
@@ -162,10 +161,20 @@ class XGProcessor:
                 # FBref non ha get_match_xg, usa get_match_stats invece
                 from src.data.stats.fbref import get_match_stats
                 stats = get_match_stats(match_id)
-                if stats and 'xg' in stats:
-                    source_data = stats['xg']
+                if stats and stats.get('success', False) and stats.get('data'):
+                    # Check if data contains xG information
+                    match_data = stats['data']
+                    if 'xg' in match_data:
+                        source_data = match_data['xg']
             elif source == 'sofascore':
-                source_data = get_sofascore_xg(match_id)
+                # Sofascore might use get_match_stats instead of get_match_xg
+                from src.data.stats.sofascore import get_match_stats
+                stats = get_match_stats(match_id)
+                if stats and stats.get('success', False) and stats.get('data'):
+                    # Check if data contains xG information
+                    match_data = stats['data']
+                    if 'xg' in match_data:
+                        source_data = match_data['xg']
             elif source == 'whoscored':
                 stats = get_match_statistics(match_id)
                 if stats and 'xg' in stats:
