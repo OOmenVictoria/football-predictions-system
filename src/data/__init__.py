@@ -8,37 +8,9 @@ from functools import wraps
 import threading
 import logging
 
-# Importa i sottopacchetti
-from src.data.scrapers import (
-    get_scraper,
-    get_supported_features,
-    get_scrapers_by_feature,
-    get_best_scrapers_for,
-    search_team,
-    get_team_info,
-    get_team_squad,
-    get_league_table,
-    get_league_matches,
-    get_match_details,
-    get_player_info,
-    search_matches
-)
-
-from src.data.stats import (
-    get_match_xg,
-    get_team_xg,
-    get_player_xg,
-    get_match_stats,
-    get_team_stats,
-    get_player_stats,
-    get_league_stats,
-    get_player_ratings,
-    aggregate_team_stats,
-    get_comprehensive_match_analysis,
-    get_best_source_for,
-    get_supported_stats
-)
-
+# Importa i moduli senza importare le singole funzioni
+import src.data.scrapers as scrapers
+import src.data.stats as stats
 from src.data.collector import DataCollector
 
 # Logger per il package
@@ -177,6 +149,7 @@ def standardize_data_response(func):
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
+        from src.utils.time_utils import get_current_datetime
         try:
             result = func(*args, **kwargs)
             return {
@@ -226,7 +199,7 @@ def get_standardized_match_data(match_id: str):
     """Versione standardizzata di collect_match_data."""
     return collect_match_data(match_id)
 
-# Utilitàper l'accesso intelligente ai dati
+# Utility per l'accesso intelligente ai dati
 class DataAccessor:
     """
     Classe per l'accesso intelligente ai dati calcistici.
@@ -249,16 +222,16 @@ class DataAccessor:
         # Raccogli dati base
         base_data = self.collector.collect_data_for_match(match_id)
         
-        # Ottieni statistiche avanzate
-        match_stats = get_match_stats(match_id, source="auto")
-        match_xg = get_match_xg(match_id, source="auto")
+        # Ottieni statistiche avanzate usando il modulo stats
+        match_stats = stats.get_match_stats(match_id, source="auto")
+        match_xg = stats.get_match_xg(match_id, source="auto")
         
         # Combina i dati
         comprehensive_data = {
             **base_data,
             'advanced_stats': match_stats,
             'xg_data': match_xg,
-            'analysis': get_comprehensive_match_analysis(match_id)
+            'analysis': stats.get_comprehensive_match_analysis(match_id)
         }
         
         return comprehensive_data
@@ -276,12 +249,12 @@ class DataAccessor:
         # Raccogli dati base
         team_data = self.collector.collect_team_stats(team_id, detailed=True)
         
-        # Ottieni statistiche avanzate
-        team_stats = get_team_stats(team_id, source="auto")
-        team_xg = get_team_xg(team_id, source="auto")
+        # Ottieni statistiche avanzate usando i moduli stats e scrapers
+        team_stats = stats.get_team_stats(team_id, source="auto")
+        team_xg = stats.get_team_xg(team_id, source="auto")
         
         # Raccogli roster
-        squad = get_team_squad(team_id)
+        squad = scrapers.get_team_squad(team_id)
         
         # Combina i dati
         complete_profile = {
@@ -307,8 +280,8 @@ class DataAccessor:
         # Per team data
         if data_type == 'team':
             # Combina info da scrapers e stats
-            scraper_info = get_best_scrapers_for('team_info')
-            stats_info = get_best_source_for('team_stats')
+            scraper_info = scrapers.get_best_scrapers_for('team_info')
+            stats_info = stats.get_best_source_for('team_stats')
             
             return {
                 'scraper': scraper_info,
@@ -318,8 +291,8 @@ class DataAccessor:
         
         # Per match data
         elif data_type == 'match':
-            scraper_info = get_best_scrapers_for('match_details')
-            stats_info = get_best_source_for('match_stats')
+            scraper_info = scrapers.get_best_scrapers_for('match_details')
+            stats_info = stats.get_best_source_for('match_stats')
             
             return {
                 'scraper': scraper_info,
@@ -329,8 +302,8 @@ class DataAccessor:
         
         # Per player data
         elif data_type == 'player':
-            scraper_info = get_best_scrapers_for('player_info')
-            stats_info = get_best_source_for('player_stats')
+            scraper_info = scrapers.get_best_scrapers_for('player_info')
+            stats_info = stats.get_best_source_for('player_stats')
             
             return {
                 'scraper': scraper_info,
@@ -365,9 +338,6 @@ def get_data_intelligently(entity_type: str, entity_id: str, **kwargs) -> Dict[s
     
     return {}
 
-# Importa tutte le funzioni utili
-from src.utils.time_utils import get_current_datetime
-
 # Esporta tutte le funzioni principali
 __all__ = [
     # DataCollector functions
@@ -389,37 +359,13 @@ __all__ = [
     'get_standardized_match_predictions',
     'get_standardized_match_data',
     
-    # Scraper functions (già definite nel modulo scrapers)
-    'get_scraper',
-    'get_supported_features',
-    'get_scrapers_by_feature',
-    'get_best_scrapers_for',
-    'search_team',
-    'get_team_info',
-    'get_team_squad',
-    'get_league_table',
-    'get_league_matches',
-    'get_match_details',
-    'get_player_info',
-    'search_matches',
-    
-    # Stats functions (già definite nel modulo stats)
-    'get_match_xg',
-    'get_team_xg',
-    'get_player_xg',
-    'get_match_stats',
-    'get_team_stats',
-    'get_player_stats',
-    'get_league_stats',
-    'get_player_ratings',
-    'aggregate_team_stats',
-    'get_comprehensive_match_analysis',
-    'get_best_source_for',
-    'get_supported_stats',
-    
     # Utility functions
     'get_collector',
     'data_accessor',
     'get_data_intelligently',
-    'DataAccessor'
+    'DataAccessor',
+    
+    # Modules
+    'scrapers',
+    'stats'
 ]
