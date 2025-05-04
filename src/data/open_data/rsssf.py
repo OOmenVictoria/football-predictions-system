@@ -652,3 +652,14 @@ def update_all_countries() -> Dict[str, Any]:
 
 # Alias per retrocompatibilità
 RSSFFLoader = RSSFFScraper
+
+# Alla fine del file rsssf.py
+
+def get_loader():
+    """
+    Ottiene un'istanza dello scraper RSSSF.
+    
+    Returns:
+        Istanza di RSSFFScraper
+    """
+    return RSSFFScraper()
