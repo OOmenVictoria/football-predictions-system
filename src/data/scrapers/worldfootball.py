@@ -34,25 +34,26 @@ class WorldFootballScraper(BaseScraper):
     def __init__(self, cache_ttl: int = None):
         """
         Inizializza lo scraper WorldFootball.
-        
+    
         Args:
             cache_ttl: Tempo di vita della cache in secondi (default da settings)
         """
         base_url = "https://www.worldfootball.net"
         cache_ttl = cache_ttl or get_setting('scrapers.worldfootball.cache_ttl', 86400)  # 24h default
-        
+    
+        # Prima chiama super().__init__()
         super().__init__(
             base_url=base_url,
             name="worldfootball",
             cache_ttl=cache_ttl
         )
-        
-        # Impostazioni specifiche per WorldFootball
+    
+        # POI aggiorna le headers (dopo che sono state inizializzate da BaseScraper)
         self.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9'
         })
-        
+    
         # Mappatura dei campionati principali
         self.leagues_map = {
             'premier_league': 'eng-premier-league',
@@ -73,7 +74,7 @@ class WorldFootballScraper(BaseScraper):
             'j1_league': 'jpn-j1-league',
             'mls': 'usa-major-league-soccer'
         }
-        
+    
         # Mappatura delle competizioni internazionali
         self.competitions_map = {
             'champions_league': 'champions-league',
@@ -85,7 +86,7 @@ class WorldFootballScraper(BaseScraper):
             'euro': 'european-championships',
             'copa_america': 'copa-america'
         }
-        
+    
         logger.info(f"WorldFootballScraper inizializzato con cache TTL: {cache_ttl}s")
 
     # ---- Metodi principali per ottenere dati ---- #
