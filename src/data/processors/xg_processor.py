@@ -1,3 +1,4 @@
+```python
 """
 Processore per i dati Expected Goals (xG).
 Questo modulo fornisce funzionalità per elaborare, normalizzare e arricchire
@@ -15,9 +16,9 @@ from src.utils.cache import cached
 from src.utils.database import FirebaseManager
 from src.config.settings import get_setting
 from src.data.stats.understat import get_match_xg as get_understat_xg
-from src.data.stats.fbref import get_match_xg as get_fbref_xg
 from src.data.stats.sofascore import get_match_xg as get_sofascore_xg
 from src.data.stats.whoscored import get_match_statistics
+# REMOVED: from src.data.stats.fbref import get_match_xg as get_fbref_xg  # This doesn't exist!
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class XGProcessor:
         home_team_id = match_data.get('home_team_id', '')
         away_team_id = match_data.get('away_team_id', '')
         home_team = match_data.get('home_team', '')
-        away_team = match_data.get('away_team', '')
+        away_team = match_data.get('away', '')
         
         # Normalizza e combina i dati
         combined_xg = self._combine_xg_data(all_xg_data, home_team_id, away_team_id)
@@ -159,7 +160,11 @@ class XGProcessor:
             if source == 'understat':
                 source_data = get_understat_xg(match_id)
             elif source == 'fbref':
-                source_data = get_fbref_xg(match_id)
+                # FBref non ha get_match_xg, usa get_match_stats invece
+                from src.data.stats.fbref import get_match_stats
+                stats = get_match_stats(match_id)
+                if stats and 'xg' in stats:
+                    source_data = stats['xg']
             elif source == 'sofascore':
                 source_data = get_sofascore_xg(match_id)
             elif source == 'whoscored':
