@@ -1264,3 +1264,20 @@ def get_market_values(team_id: Union[str, int], language: str = None) -> List[Di
     """
     scraper = TransfermarktScraper()
     return scraper.get_market_values(team_id, language)
+
+# Alla fine del file transfermarkt.py
+
+# Istanza globale
+_scraper_instance = None
+
+def get_scraper():
+    """
+    Ottiene l'istanza globale dello scraper Transfermarkt.
+    
+    Returns:
+        Istanza di TransfermarktScraper.
+    """
+    global _scraper_instance
+    if _scraper_instance is None:
+        _scraper_instance = TransfermarktScraper()
+    return _scraper_instance
