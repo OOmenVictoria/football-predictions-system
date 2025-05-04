@@ -31,11 +31,9 @@ from src.monitoring.logger import get_logger
 from src.data.api.football_data import FootballDataAPI
 from src.data.api.api_football import APIFootball
 
-# Importa i moduli di statistiche
-from src.data.stats.fbref import FBrefScraper
-from src.data.stats.understat import UnderstatScraper
-from src.data.stats.sofascore import SofaScoreScraper
-from src.data.stats.footystats import FootyStatsScraper
+# Usa la nuova interfaccia stats invece delle importazioni dirette
+import src.data.stats as stats
+import src.data.scrapers as scrapers
 
 # Importa i moduli open data
 from src.data.open_data.open_football import OpenFootballLoader
@@ -68,11 +66,11 @@ class DataCollector:
         self.football_data_api = FootballDataAPI()
         self.api_football = APIFootball()
         
-        # Inizializza gli scraper di statistiche
-        self.fbref_scraper = FBrefScraper()
-        self.understat_scraper = UnderstatScraper()
-        self.sofascore_scraper = SofaScoreScraper()
-        self.footystats_scraper = FootyStatsScraper()
+        # Inizializza gli scraper di statistiche usando la nuova interfaccia
+        self.fbref_scraper = stats.get_scraper('fbref')
+        self.understat_scraper = stats.get_scraper('understat')
+        self.sofascore_scraper = stats.get_scraper('sofascore')
+        self.footystats_scraper = stats.get_scraper('footystats')
         
         # Inizializza i loader di dati aperti
         self.open_football_loader = OpenFootballLoader()
@@ -294,25 +292,25 @@ class DataCollector:
         
         # Se richieste statistiche dettagliate
         if detailed:
-            # Strategia 2: Usa FBref per statistiche avanzate
+            # Strategia 2: Usa la nuova interfaccia stats per statistiche avanzate
             try:
                 fbref_team_id = team_data.get('fbref_id') or team_id
-                team_stats = self.fbref_scraper.get_team_stats(fbref_team_id)
-                if team_stats:
+                team_stats = stats.get_team_stats(fbref_team_id, source='fbref')
+                if team_stats and team_stats.data:
                     team_data['stats'] = team_data.get('stats', {})
-                    team_data['stats'].update(team_stats)
+                    team_data['stats'].update(team_stats.data)
                     logger.info(f"Ottenute statistiche avanzate per squadra {team_id} da fbref")
             except Exception as e:
                 error_msg = f"Errore nel recupero statistiche da fbref: {str(e)}"
                 logger.warning(error_msg)
                 errors.append(error_msg)
             
-            # Strategia 3: Usa Understat per dati xG
+            # Strategia 3: Usa la nuova interfaccia stats per dati xG
             try:
                 understat_team_id = team_data.get('understat_id') or team_id
-                xg_stats = self.understat_scraper.get_team_stats(understat_team_id)
-                if xg_stats:
-                    team_data['xg_stats'] = xg_stats
+                xg_stats = stats.get_team_xg(understat_team_id, source='understat')
+                if xg_stats and xg_stats.data:
+                    team_data['xg_stats'] = xg_stats.data
                     logger.info(f"Ottenuti dati xG per squadra {team_id} da understat")
             except Exception as e:
                 error_msg = f"Errore nel recupero dati xG da understat: {str(e)}"
@@ -323,9 +321,9 @@ class DataCollector:
             if not team_data.get('stats'):
                 try:
                     sofascore_team_id = team_data.get('sofascore_id') or team_id
-                    sofascore_stats = self.sofascore_scraper.get_team_stats(sofascore_team_id)
-                    if sofascore_stats:
-                        team_data['stats'] = sofascore_stats
+                    sofascore_stats = stats.get_team_stats(sofascore_team_id, source='sofascore')
+                    if sofascore_stats and sofascore_stats.data:
+                        team_data['stats'] = sofascore_stats.data
                         logger.info(f"Ottenute statistiche per squadra {team_id} da sofascore")
                 except Exception as e:
                     error_msg = f"Errore nel recupero statistiche da sofascore: {str(e)}"
