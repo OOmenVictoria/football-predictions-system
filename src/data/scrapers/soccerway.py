@@ -795,3 +795,20 @@ class SoccerwayScraper(BaseScraper):
             # Estrai risultato dal formato "1 - 0"
             if "-" in score_text:
                 scores = score_text.split("-")
+
+# Alla fine del file soccerway.py
+
+# Istanza globale
+_scraper_instance = None
+
+def get_scraper():
+    """
+    Ottiene l'istanza globale dello scraper Soccerway.
+    
+    Returns:
+        Istanza di SoccerwayScraper.
+    """
+    global _scraper_instance
+    if _scraper_instance is None:
+        _scraper_instance = SoccerwayScraper()
+    return _scraper_instance
