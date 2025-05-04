@@ -28,30 +28,23 @@ class WhoScoredScraper(BaseScraper):
     statistiche di livello paragonabile senza blocchi significativi.
     """
     
-    class WhoScoredScraper(BaseScraper):
-    """
-    Scraper per estrarre statistiche avanzate da fonti simili a WhoScored.
-    
-    Poiché WhoScored implementa protezioni anti-scraping avanzate,
-    questo scraper ottiene dati simili da fonti alternative che forniscono 
-    statistiche di livello paragonabile senza blocchi significativi.
-    """
-    
     def __init__(self):
         """Inizializza lo scraper WhoScored-like."""
-        # Fix: Pass required parameters to super().__init__()
-        super().__init__(
-            name="whoscored",
-            base_url="https://www.sofascore.com"  # or whichever source you prefer as primary
-        )
-        
-        self.db = FirebaseManager()
+        # Initialize base URLs first
         self.base_urls = {
             'footystats': 'https://footystats.org',
             'fbref': 'https://fbref.com',
             'sofascore': 'https://www.sofascore.com'
         }
         self.preferred_source = get_setting('scrapers.whoscored.preferred_source', 'sofascore')
+        
+        # Call parent class with required parameters
+        super().__init__(
+            name="whoscored",
+            base_url=self.base_urls[self.preferred_source]
+        )
+        
+        self.db = FirebaseManager()
         self.min_wait_time = get_setting('scrapers.whoscored.min_wait_time', 3)
         
         logger.info(f"WhoScoredScraper inizializzato con source primaria: {self.preferred_source}")
