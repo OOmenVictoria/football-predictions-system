@@ -6,7 +6,7 @@ inclusi dati di Expected Goals (xG), metriche di prestazione e valutazioni.
 from typing import Dict, List, Any, Optional, Union, Callable
 from functools import wraps
 import logging
-import datetime  # Aggiungo qui l'import per datetime
+import datetime
 
 # Importa tutte le funzioni principali dai vari moduli
 from src.data.stats.fbref import (
@@ -367,6 +367,73 @@ def get_match_stats(match_id: str, source: str = "auto", **kwargs) -> Dict[str, 
         raise ValueError(f"Fonte non supportata: {source}")
 
 @standardize_response
+def get_team_xg(team_id: str, source: str = "auto", **kwargs) -> Dict[str, Any]:
+    """
+    Ottiene dati Expected Goals (xG) per una squadra.
+    
+    Args:
+        team_id: ID della squadra
+        source: Fonte di statistiche da utilizzare ("auto" per selezione automatica)
+        **kwargs: Parametri aggiuntivi specifici della fonte
+    
+    Returns:
+        Dati xG della squadra
+    """
+    if source == "auto":
+        source = get_best_source_for("xg_data")
+    
+    if source == "understat":
+        return get_understat_team_xg(int(team_id), **kwargs)
+    elif source == "fbref":
+        stats = get_fbref_team_stats(team_id, **kwargs)
+        if stats and "xg" in stats:
+            return stats["xg"]
+        return None
+    elif source == "sofascore":
+        stats = get_sofascore_team_stats(team_id, **kwargs)
+        if stats and "xg" in stats:
+            return stats["xg"]
+        return None
+    elif source == "whoscored":
+        stats = get_whoscored_team_stats(team_id, **kwargs)
+        if stats and "xg" in stats:
+            return stats["xg"]
+        return None
+    else:
+        raise ValueError(f"Fonte non supportata per team_xg: {source}")
+
+@standardize_response
+def get_player_xg(player_id: str, source: str = "auto", **kwargs) -> Dict[str, Any]:
+    """
+    Ottiene dati Expected Goals (xG) per un giocatore.
+    
+    Args:
+        player_id: ID del giocatore
+        source: Fonte di statistiche da utilizzare ("auto" per selezione automatica)
+        **kwargs: Parametri aggiuntivi specifici della fonte
+    
+    Returns:
+        Dati xG del giocatore
+    """
+    if source == "auto":
+        source = get_best_source_for("xg_data")
+    
+    if source == "understat":
+        return get_understat_player_xg(int(player_id), **kwargs)
+    elif source == "fbref":
+        stats = get_fbref_player_stats(player_id, **kwargs)
+        if stats and "xg" in stats:
+            return stats["xg"]
+        return None
+    elif source == "whoscored":
+        stats = get_whoscored_player_stats(player_id, **kwargs)
+        if stats and "xg" in stats:
+            return stats["xg"]
+        return None
+    else:
+        raise ValueError(f"Fonte non supportata per player_xg: {source}")
+
+@standardize_response
 def get_match_xg(match_id: str, priority_sources: Optional[List[str]] = None) -> Dict[str, float]:
     """
     Ottiene i dati Expected Goals (xG) per una partita,
@@ -439,6 +506,53 @@ def get_match_xg(match_id: str, priority_sources: Optional[List[str]] = None) ->
         "away_xg": 0.0,
         "source": "none"
     }
+
+@standardize_response
+def get_league_stats(league_id: str, source: str = "auto", **kwargs) -> Dict[str, Any]:
+    """
+    Ottiene statistiche per una lega/campionato.
+    
+    Args:
+        league_id: ID della lega/campionato
+        source: Fonte di statistiche da utilizzare ("auto" per selezione automatica)
+        **kwargs: Parametri aggiuntivi specifici della fonte
+    
+    Returns:
+        Statistiche della lega
+    """
+    if source == "auto":
+        source = get_best_source_for("league_stats")
+    
+    if source == "fbref":
+        # FBref potrebbe avere un metodo specifico per le leghe
+        return get_fbref_team_stats(league_id, **kwargs)
+    elif source == "sofascore":
+        # SofaScore potrebbe avere un metodo specifico per le leghe
+        return get_sofascore_team_stats(league_id, **kwargs)
+    elif source == "footystats":
+        # FootyStats è particolarmente forte per le statistiche di lega
+        return get_footystats_team_stats(league_id, **kwargs)
+    else:
+        raise ValueError(f"Fonte non supportata per league_stats: {source}")
+
+@standardize_response
+def get_supported_stats(source: str = None) -> Dict[str, Any]:
+    """
+    Ottiene le statistiche supportate da una fonte specifica o tutte le fonti.
+    
+    Args:
+        source: Fonte specifica (opzionale)
+    
+    Returns:
+        Dizionario delle statistiche supportate
+    """
+    if source:
+        if source in STATS_SOURCES:
+            return STATS_SOURCES[source]["capabilities"]
+        else:
+            raise ValueError(f"Fonte non supportata: {source}")
+    else:
+        return {source: info["capabilities"] for source, info in STATS_SOURCES.items()}
 
 @standardize_response
 def get_player_ratings(player_id: str, priority_sources: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -572,20 +686,46 @@ def get_comprehensive_match_analysis(match_id: str) -> Dict[str, Any]:
     
     return analysis
 
-# Funzioni di retrocompatibilità
-get_fbref_team_stats = get_fbref_team_stats  # Alias diretto
-get_understat_team_xg = get_understat_team_xg  # Alias diretto
-get_footystats_team_stats = get_footystats_team_stats  # Alias diretto
-get_sofascore_team_stats = get_sofascore_team_stats  # Alias diretto
-get_whoscored_team_stats = get_whoscored_team_stats  # Alias diretto
-
-get_fbref_player_stats = get_fbref_player_stats  # Alias diretto
-get_understat_player_xg = get_understat_player_xg  # Alias diretto
-get_sofascore_player_ratings = get_sofascore_player_ratings  # Alias diretto
-get_whoscored_player_stats = get_whoscored_player_stats  # Alias diretto
-
-get_fbref_match_stats = get_fbref_match_stats  # Alias diretto
-get_understat_match_xg = get_understat_match_xg  # Alias diretto
-get_footystats_match_stats = get_footystats_match_stats  # Alias diretto
-get_sofascore_match_stats = get_sofascore_match_stats  # Alias diretto
-get_whoscored_match_stats = get_whoscored_match_stats  # Alias diretto
+# Esporta tutte le funzioni principali
+__all__ = [
+    # Funzioni di accesso generale
+    'get_team_stats',
+    'get_player_stats',
+    'get_match_stats',
+    'get_team_xg',
+    'get_player_xg',
+    'get_match_xg',
+    'get_league_stats',
+    'get_player_ratings',
+    'get_supported_stats',
+    
+    # Funzioni di aggregazione
+    'aggregate_team_stats',
+    'get_comprehensive_match_analysis',
+    
+    # Funzioni di utilità
+    'get_scraper',
+    'get_best_source_for',
+    'get_available_stats_sources',
+    'get_sources_by_capability',
+    
+    # Oggetti di supporto
+    'StatsResponse',
+    'StatsError',
+    
+    # Funzioni specifiche per fonte (retrocompatibilità)
+    'get_fbref_team_stats',
+    'get_understat_team_xg',
+    'get_footystats_team_stats',
+    'get_sofascore_team_stats',
+    'get_whoscored_team_stats',
+    'get_fbref_player_stats',
+    'get_understat_player_xg',
+    'get_sofascore_player_ratings',
+    'get_whoscored_player_stats',
+    'get_fbref_match_stats',
+    'get_understat_match_xg',
+    'get_footystats_match_stats',
+    'get_sofascore_match_stats',
+    'get_whoscored_match_stats'
+]
