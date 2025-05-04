@@ -1364,3 +1364,20 @@ def get_team_awards(team_id: str) -> List[Dict[str, Any]]:
     """
     scraper = ElevenVElevenScraper()
     return scraper.get_team_awards(team_id)
+
+# Alla fine del file eleven_v_eleven.py
+
+# Istanza globale
+_scraper_instance = None
+
+def get_scraper():
+    """
+    Ottiene l'istanza globale dello scraper ElevenVEleven.
+    
+    Returns:
+        Istanza di ElevenVElevenScraper.
+    """
+    global _scraper_instance
+    if _scraper_instance is None:
+        _scraper_instance = ElevenVElevenScraper()
+    return _scraper_instance
