@@ -48,8 +48,8 @@ class WorldFootballScraper(BaseScraper):
             cache_ttl=cache_ttl
         )
     
-        # POI aggiorna le headers (dopo che sono state inizializzate da BaseScraper)
-        self.headers.update({
+        # Aggiorna gli headers della sessione
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9'
         })
