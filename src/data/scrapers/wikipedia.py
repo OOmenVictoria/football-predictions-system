@@ -1242,3 +1242,20 @@ def get_match_history(team1: str, team2: str) -> List[Dict[str, Any]]:
     """
     scraper = WikipediaScraper()
     return scraper.get_match_history(team1, team2)
+
+# Alla fine del file wikipedia.py
+
+# Istanza globale
+_scraper_instance = None
+
+def get_scraper():
+    """
+    Ottiene l'istanza globale dello scraper Wikipedia.
+    
+    Returns:
+        Istanza di WikipediaScraper.
+    """
+    global _scraper_instance
+    if _scraper_instance is None:
+        _scraper_instance = WikipediaScraper()
+    return _scraper_instance
