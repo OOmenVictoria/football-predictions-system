@@ -666,3 +666,14 @@ def update_all_leagues(seasons: Optional[List[str]] = None) -> Dict[str, Any]:
 
 # Alias per retrocompatibilità - per risolvere errori di importazione
 OpenFootballLoader = OpenFootballClient
+
+# Alla fine del file open_football.py
+
+def get_loader():
+    """
+    Ottiene un'istanza del client OpenFootball.
+    
+    Returns:
+        Istanza di OpenFootballClient
+    """
+    return OpenFootballClient()
