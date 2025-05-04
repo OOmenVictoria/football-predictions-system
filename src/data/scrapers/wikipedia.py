@@ -31,23 +31,21 @@ class WikipediaScraper(BaseScraper):
     
     def __init__(self):
         """Inizializza lo scraper Wikipedia."""
-        super().__init__()
-        
-        # Base URLs per diverse lingue
+        # Imposta prima le proprietà necessarie
         self.lang = get_setting('scrapers.wikipedia.language', 'en')
-        self.base_url = f"https://{self.lang}.wikipedia.org"
+    
+        # Chiama super().__init__() con i parametri richiesti
+        super().__init__(
+            name="wikipedia",
+            base_url=f"https://{self.lang}.wikipedia.org"
+        )
+    
+        # API URL
         self.api_url = f"https://{self.lang}.wikipedia.org/w/api.php"
-        
-        # Headers per simulare un browser
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-        
+    
         # Cache time-to-live in secondi
         self.cache_ttl = get_setting('scrapers.wikipedia.cache_ttl', 86400)  # Default 24 hours
-        
+    
         logger.info(f"WikipediaScraper inizializzato con lingua: {self.lang}")
     
     def _make_api_request(self, params: Dict[str, Any]) -> Dict[str, Any]:
