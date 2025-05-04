@@ -655,3 +655,14 @@ def update_all_competitions() -> Dict[str, Dict[str, Any]]:
 
 # Alias per retrocompatibilità
 StatsBombLoader = StatsBombClient
+
+# Alla fine del file statsbomb.py
+
+def get_loader():
+    """
+    Ottiene un'istanza del client StatsBomb.
+    
+    Returns:
+        Istanza di StatsBombClient
+    """
+    return StatsBombClient()
