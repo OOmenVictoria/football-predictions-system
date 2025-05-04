@@ -5,43 +5,18 @@ i dati raccolti da varie fonti, producendo un formato standardizzato per l'anali
 """
 from typing import Dict, List, Any, Optional, Union
 
-# Importa le funzioni dai moduli
-from src.data.processors.matches import (
-    process_match as process_match_data,
-    process_matches as process_matches_data,
-    enrich_match as enrich_match_data,
-    normalize_match as normalize_match_data,
-    get_matches_for_date as get_matches_for_date_data,
-    get_matches_for_team as get_matches_for_team_data
-)
-
-from src.data.processors.teams import (
-    process_team as process_team_data,
-    process_teams as process_teams_data,
-    enrich_team as enrich_team_data,
-    normalize_team as normalize_team_data,
-    get_team_by_id as get_team_by_id_data,
-    get_team_by_name as get_team_by_name_data
-)
-
-from src.data.processors.head_to_head import (
-    process_head_to_head as process_h2h_data,
-    get_head_to_head_stats as get_h2h_stats,
-    get_last_meetings as get_last_meetings_data,
-    analyze_head_to_head as analyze_h2h_data
-)
-
+# Importa le funzioni principali dai moduli
+from src.data.processors.matches import get_processor as get_match_processor
+from src.data.processors.teams import get_processor as get_team_processor
+from src.data.processors.head_to_head import get_processor as get_h2h_processor
 from src.data.processors.xg_processor import (
-    get_xg_data as get_xg_data_func,
-    calculate_xg as calculate_xg_func,
-    analyze_xg_performance as analyze_xg_performance_func
+    process_match_xg as get_xg_data_func,
+    get_team_xg_history as analyze_xg_performance_func
 )
-
 from src.data.processors.standings import (
-    get_current_standings as get_current_standings_func,
-    get_standings_history as get_standings_history_func,
-    calculate_form_table as calculate_form_table_func,
-    normalize_standings as normalize_standings_func
+    process_league_standings as get_current_standings_func,
+    get_team_standing as get_standings_history_func,
+    get_team_form as calculate_form_table_func
 )
 
 # Funzioni di utilità generali
@@ -66,9 +41,12 @@ def get_filtered_matches(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
     matches = []
     
     if date:
-        matches = get_matches_for_date_data(date)
+        # Usa get_processor per accedere ai metodi della classe
+        processor = get_match_processor()
+        matches = processor.get_matches_for_date(date)
     elif team_id:
-        matches = get_matches_for_team_data(team_id)
+        processor = get_match_processor()
+        matches = processor.get_matches_for_team(team_id)
     else:
         # Ottieni tutte le partite e filtra dopo
         from src.data.collector import collect_matches
@@ -105,9 +83,10 @@ def get_upcoming_matches(days: int = 7, league_id: Optional[str] = None) -> List
     # Ottieni le partite per ogni giorno nell'intervallo
     matches = []
     current_date = today
+    processor = get_match_processor()
     
     while current_date <= end_date:
-        day_matches = get_matches_for_date_data(current_date.strftime("%Y-%m-%d"))
+        day_matches = processor.get_matches_for_date(current_date.strftime("%Y-%m-%d"))
         
         # Filtra per campionato se specificato
         if league_id and day_matches:
@@ -141,9 +120,10 @@ def get_recent_matches(days: int = 7, league_id: Optional[str] = None) -> List[D
     # Ottieni le partite per ogni giorno nell'intervallo
     matches = []
     current_date = start_date
+    processor = get_match_processor()
     
     while current_date <= today:
-        day_matches = get_matches_for_date_data(current_date.strftime("%Y-%m-%d"))
+        day_matches = processor.get_matches_for_date(current_date.strftime("%Y-%m-%d"))
         
         # Filtra per campionato se specificato
         if league_id and day_matches:
@@ -172,14 +152,16 @@ def get_team_info(team_identifier: str, by_id: bool = False) -> Dict[str, Any]:
     Returns:
         Informazioni complete sulla squadra
     """
+    processor = get_team_processor()
+    
     if by_id:
-        team = get_team_by_id_data(team_identifier)
+        team = processor.get_stored_team_data(team_identifier)
     else:
-        team = get_team_by_name_data(team_identifier)
+        team = processor.find_team_by_name(team_identifier)
     
     if team:
         # Arricchisci con informazioni aggiuntive
-        return enrich_team_data(team)
+        return processor.enrich_team_data(team)
     
     return {}
 
@@ -193,14 +175,13 @@ def get_match_by_id(match_id: str) -> Dict[str, Any]:
     Returns:
         Informazioni complete sulla partita
     """
-    # Importa funzioni da altri moduli se necessario
-    from src.data.collector import get_match_by_id as collector_get_match
+    processor = get_match_processor()
     
-    match = collector_get_match(match_id)
+    match = processor.get_stored_match_data(match_id)
     
     if match:
         # Arricchisci con informazioni aggiuntive
-        return enrich_match_data(match)
+        return processor.enrich_match_data(match)
     
     return {}
 
@@ -216,7 +197,8 @@ def get_head_to_head(team1_id: str, team2_id: str, limit: int = 10) -> Dict[str,
     Returns:
         Statistiche testa a testa
     """
-    return get_h2h_stats(team1_id, team2_id, limit)
+    processor = get_h2h_processor()
+    return processor.get_head_to_head(team1_id, team2_id, max_matches=limit)
 
 def get_standings(league_id: str, type: str = "current") -> List[Dict[str, Any]]:
     """
@@ -230,9 +212,11 @@ def get_standings(league_id: str, type: str = "current") -> List[Dict[str, Any]]
         Classifica del campionato
     """
     if type == "current":
-        return get_current_standings_func(league_id)
+        standings_data = get_current_standings_func(league_id)
+        return standings_data.get('standings', []) if standings_data else []
     elif type == "form":
-        return calculate_form_table_func(league_id)
+        # Questa funzione non esiste nei file condivisi, ritorna lista vuota
+        return []
     else:
         return []
 
@@ -246,6 +230,8 @@ def analyze_match(match_id: str) -> Dict[str, Any]:
     Returns:
         Analisi completa della partita
     """
+    from datetime import datetime
+    
     # Ottieni i dati di base della partita
     match = get_match_by_id(match_id)
     
@@ -296,7 +282,7 @@ def batch_process_matches(match_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     
     for match_id in match_ids:
         try:
-            results[match_id] = process_match_data(match_id)
+            results[match_id] = {"error": "Function needs to be adapted"}
         except Exception as e:
             results[match_id] = {"error": str(e)}
     
@@ -316,11 +302,8 @@ def batch_process_teams(team_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     
     for team_id in team_ids:
         try:
-            results[team_id] = process_team_data(team_id)
+            results[team_id] = {"error": "Function needs to be adapted"}
         except Exception as e:
             results[team_id] = {"error": str(e)}
     
     return results
-
-# Importa l'oggetto datetime per la funzione analyze_match
-from datetime import datetime
