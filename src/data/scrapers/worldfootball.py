@@ -1436,3 +1436,20 @@ def get_player_info(player_id: str) -> Dict[str, Any]:
     """
     scraper = WorldFootballScraper()
     return scraper.get_player_info(player_id)
+
+# Alla fine del file worldfootball.py
+
+# Istanza globale
+_scraper_instance = None
+
+def get_scraper():
+    """
+    Ottiene l'istanza globale dello scraper WorldFootball.
+    
+    Returns:
+        Istanza di WorldFootballScraper.
+    """
+    global _scraper_instance
+    if _scraper_instance is None:
+        _scraper_instance = WorldFootballScraper()
+    return _scraper_instance
