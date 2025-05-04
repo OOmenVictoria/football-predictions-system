@@ -671,3 +671,28 @@ try:
     initialize_sources()
 except Exception as e:
     logger.warning(f"Impossibile inizializzare le fonti dati su Firebase: {e}")
+
+# Aggiungi dopo le altre funzioni in sources.py
+
+def get_source_priority(source_id: str) -> int:
+    """
+    Ottiene la priorità di una fonte dati.
+    
+    Args:
+        source_id: ID della fonte
+        
+    Returns:
+        Priorità (più basso = più affidabile)
+    """
+    # Ottieni la fonte
+    source = get_source(source_id)
+    
+    if source and 'priority' in source:
+        return source['priority']
+    
+    # Controlla nelle priorità predefinite
+    if source_id in SOURCE_PRIORITIES:
+        return SOURCE_PRIORITIES[source_id]
+    
+    # Default: priorità bassa (meno affidabile)
+    return 999
