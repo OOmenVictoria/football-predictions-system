@@ -29,9 +29,13 @@ class FootyStatsScraper(BaseScraper):
     
     def __init__(self):
         """Inizializza lo scraper FootyStats."""
-        super().__init__()
+        # Fix: Passa i parametri richiesti a super().__init__()
+        super().__init__(
+            name="footystats",
+            base_url="https://footystats.org"
+        )
+        
         self.db = FirebaseManager()
-        self.base_url = "https://footystats.org"
         self.min_wait_time = get_setting('scrapers.footystats.min_wait_time', 2)
         self.max_retries = get_setting('scrapers.footystats.max_retries', 3)
         
