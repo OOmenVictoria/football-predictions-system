@@ -35,26 +35,26 @@ class TransfermarktScraper(BaseScraper):
     def __init__(self, cache_ttl: int = None):
         """
         Inizializza lo scraper Transfermarkt.
-        
+    
         Args:
             cache_ttl: Tempo di vita della cache in secondi (default da settings)
         """
         base_url = "https://www.transfermarkt.com"
         cache_ttl = cache_ttl or get_setting('scrapers.transfermarkt.cache_ttl', 86400)  # 24h default
-        
+    
         super().__init__(
             base_url=base_url,
             name="transfermarkt",
             cache_ttl=cache_ttl
         )
-        
-        # Impostazioni specifiche per Transfermarkt
-        self.headers.update({
+    
+        # Change self.headers to self.session.headers
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
             'Cache-Control': 'no-cache'
         })
-        
+    
         # Mappa delle lingue (Transfermarkt ha siti localizzati)
         self.language_domains = {
             'en': 'com',
@@ -67,9 +67,9 @@ class TransfermarktScraper(BaseScraper):
             'tr': 'com.tr',
             'ru': 'ru'
         }
-        
+    
         self.default_language = 'en'
-        
+    
         logger.info(f"TransfermarktScraper inizializzato con cache TTL: {cache_ttl}s")
     
     def _get_localized_url(self, path: str, language: str = None) -> str:
