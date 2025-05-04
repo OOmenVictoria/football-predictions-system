@@ -563,3 +563,9 @@ def query_data(path: str, **kwargs) -> Optional[Dict]:
         Risultati query o None in caso di errore
     """
     return firebase.query(path, **kwargs)
+
+def process_match(match_data: Dict[str, Any], source: str, league_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Standalone function to process a match.
+    """
+    return match_processor.process_match(match_data, source, league_id)
