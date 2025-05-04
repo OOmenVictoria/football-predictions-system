@@ -634,3 +634,14 @@ def update_all_datasets() -> Dict[str, Dict[str, Any]]:
 
 # Alias per retrocompatibilità
 KaggleLoader = KaggleDataLoader
+
+# Alla fine del file kaggle_loader.py
+
+def get_loader():
+    """
+    Ottiene un'istanza del loader di dati Kaggle.
+    
+    Returns:
+        Istanza di KaggleDataLoader
+    """
+    return KaggleDataLoader()
