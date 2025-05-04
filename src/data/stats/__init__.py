@@ -6,6 +6,7 @@ inclusi dati di Expected Goals (xG), metriche di prestazione e valutazioni.
 from typing import Dict, List, Any, Optional, Union, Callable
 from functools import wraps
 import logging
+import datetime  # Aggiungo qui l'import per datetime
 
 # Importa tutte le funzioni principali dai vari moduli
 from src.data.stats.fbref import (
@@ -177,7 +178,6 @@ def standardize_response(func):
             return StatsResponse(success=False, error=str(e))
     return wrapper
 
-@wraps(func)
 def with_source_tracking(func):
     """
     Decorator per tracciare la fonte dei dati nelle risposte.
@@ -589,6 +589,3 @@ get_understat_match_xg = get_understat_match_xg  # Alias diretto
 get_footystats_match_stats = get_footystats_match_stats  # Alias diretto
 get_sofascore_match_stats = get_sofascore_match_stats  # Alias diretto
 get_whoscored_match_stats = get_whoscored_match_stats  # Alias diretto
-
-# Importazioni aggiuntive per compatibilità
-from datetime import datetime
